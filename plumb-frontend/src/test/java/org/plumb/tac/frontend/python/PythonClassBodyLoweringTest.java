@@ -119,16 +119,16 @@ class PythonClassBodyLoweringTest {
 
     assertThat(body).as("the class body is a stream of its own").isNotNull();
 
-    TacInstruction store = PythonTestSupport.storeOfKey(body, "VALUE");
+    TacInstruction store = PythonTestSupport.fieldStoreOf(body, "VALUE");
     assertThat(store)
         .as("a name written in a class body is an attribute of the class, not a local")
         .isNotNull();
 
-    TacInstruction load = PythonTestSupport.loadOfKey(body, "VALUE");
+    TacInstruction load = PythonTestSupport.fieldLoadOf(body, "VALUE");
     assertThat(load).as("the name must be read from the class as well").isNotNull();
-    assertThat(load.lhs1)
+    assertThat(PythonTestSupport.ownerOf(load))
         .as("the read and the write must be the same location, or the class has two of them")
-        .isEqualTo(store.lhs1);
+        .isEqualTo(PythonTestSupport.ownerOf(store));
   }
 
   @Test

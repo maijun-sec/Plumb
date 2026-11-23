@@ -150,6 +150,64 @@ final class PythonTestSupport {
   }
 
   /**
+   * The store that writes the slot of that name, or null.
+   *
+   * <p>A SLOT is a name that lives in a scope: the module's own, a class body's, or the scope of a
+   * function a nested function writes into. The TAC has no scope of its own, so a slot is a FIELD
+   * access on a synthetic owner, and the engine's cross-function field tracker is what carries the
+   * value from one function to another.
+   *
+   * @param function the function to read
+   * @param field the name of the slot
+   * @return the matching store, or null
+   */
+  static TacInstruction fieldStoreOf(TacFunction function, String field) {
+    if (function == null) {
+      return null;
+    }
+    for (TacInstruction instruction : function.instructions()) {
+      if (instruction.kind == TacInstruction.Kind.FIELDSTORE
+          && field.equals(instruction.fieldName)) {
+        return instruction;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The load that reads the slot of that name, or null.
+   *
+   * @param function the function to read
+   * @param field the name of the slot
+   * @return the matching load, or null
+   */
+  static TacInstruction fieldLoadOf(TacFunction function, String field) {
+    if (function == null) {
+      return null;
+    }
+    for (TacInstruction instruction : function.instructions()) {
+      if (instruction.kind == TacInstruction.Kind.FIELDLOAD
+          && field.equals(instruction.fieldName)) {
+        return instruction;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The owner a scope access names, or null.
+   *
+   * @param instruction the instruction to read
+   * @return the owner's variable, or null
+   */
+  static TacOperand.TacVar ownerOf(TacInstruction instruction) {
+    if (instruction == null) {
+      return null;
+    }
+    return instruction.lhs1 instanceof TacOperand.TacVar owner ? owner : null;
+  }
+
+  /**
    * The name of the entry a keyed access reads or writes, or null.
    *
    * @param instruction the instruction to read

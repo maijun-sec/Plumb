@@ -33,6 +33,7 @@ findings.
 
 import ast
 import builtins
+import re
 
 from plumb_wire import (
     Const,
@@ -379,10 +380,15 @@ class FunctionState:
         # A function is a scope of its own, so the class body context stops
         # here and comes back when the function is finished.
         self.outer_class_body_owner = None
-        # The names this class body binds. They are attributes of the class,
-        # so a name written in the body and a name read in the body are the
-        # same location. It is empty everywhere but on a class body.
-        self.class_body_names = set()
+        # The scope slots the names this function BINDS live in: the names
+        # that belong to a scope around this code (a ``global`` name, a
+        # ``nonlocal`` name) or to a scope this code owns (the module's
+        # own names, a class body's names, a name a nested function writes
+        # by ``nonlocal``).
+        self.own_slots = {}
+        # The scope slots the names this function TOUCHES in a scope around
+        # it live in.
+        self.outer_slots = {}
 
     def new_temp(self, type_=None):
         """A fresh temporary."""
@@ -441,6 +447,10 @@ class Translator:
         self.function_scope = {}
         # The function each function is written inside, by its AST node.
         self.function_enclosing = {}
+        # The function each class body is written inside, by its AST node.
+        # A class body is not a function scope, but a ``nonlocal`` in it
+        # names a variable of the function around it.
+        self.class_enclosing = {}
         # The functions each function is written inside, by its AST node.
         self.function_ancestors = {}
         # The counter that names the lambdas of one module.
@@ -469,6 +479,32 @@ class Translator:
         # a local of the stream that lowers the body, so the body has to say
         # which class it belongs to. It is None everywhere else.
         self.class_body_owner = None
+        # The scope owners: the synthetic variables that stand for the
+        # scopes. One per scope, so every access to that scope names the
+        # same owner.
+        self.scope_owners = {}
+        # The owner names already taken, so two scopes whose identities
+        # spell the same name do not share one.
+        self.scope_owner_names = {}
+        # The names a function binds to a value, by the function's AST node.
+        self.function_values = {}
+        # The names the module binds to a value. A name the module binds by
+        # an ASSIGNMENT is a value the module holds; an import binds a
+        # module object and a ``def`` binds a function object, and the TAC
+        # holds neither as a variable.
+        self.module_value_names = set()
+        # The class scope names, by the class's path.
+        self.class_value_names = {}
+        # The path of the class a simple name refers to.
+        self.class_paths = {}
+        # The path that names a function, by the function's AST node.
+        self.function_paths = {}
+        # The scope slots the names a scope OWNS live in, by the scope's AST
+        # node. The module's own node is the tree itself.
+        self.own_slots = {}
+        # The scope slots the names a scope TOUCHES in a scope around it live
+        # in, by the scope's AST node.
+        self.outer_slots = {}
 
     # ---- the module ------------------------------------------------------------------------
 
@@ -476,10 +512,15 @@ class Translator:
         """The functions a module declares, in source order."""
         self.collect_bindings(tree)
         self.collect_scopes(tree)
+        self.collect_scope_slots(tree)
         outer = self.state
         state = self.begin_function("<module>", self.module_name, None, synthetic=True)
         state.member_kind = MemberKind.MODULE
         state.shadowed_names = self.scope_shadowed_names(tree.body, module_scope=True)
+        # The module's own names live in the MODULE's scope, so a function
+        # that reads one finds the value the module gave it.
+        state.own_slots = self.own_slots.get(tree, {})
+        state.outer_slots = self.outer_slots.get(tree, {})
         self.guard(tree, lambda: self.lower_body(tree.body))
         functions = [self.finish_function(state)]
         self.state = outer
@@ -498,10 +539,18 @@ class Translator:
         decides what it is: a function declared in a class body is a
         method, and a method's first parameter is the receiver.
         """
-        self.walk_bindings(tree, None)
+        self.walk_bindings(tree, None, "")
 
-    def walk_bindings(self, node, parent):
-        """Read one node's names, and then its children's."""
+    def walk_bindings(self, node, parent, path):
+        """Read one node's names, and then its children's.
+
+        <p>`path` names the scope the node is written in: the names that
+        lead to it, without the module. A class and a function both have
+        one, and the scope a name lives in is decided by the path that
+        leads to it -- two classes of the same name in two modules are two
+        classes, and two classes of the same name under two paths are two
+        classes as well.
+        """
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.asname:
@@ -536,7 +585,11 @@ class Translator:
                 self.imported_modules.setdefault(local, qualified)
         elif isinstance(node, ast.ClassDef):
             self.defined_classes.add(node.name)
+            path = "%s.%s" % (path, node.name) if path else node.name
+            self.class_paths.setdefault(node.name, path)
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            path = "%s.%s" % (path, node.name) if path else node.name
+            self.function_paths[id(node)] = path
             if isinstance(parent, ast.ClassDef):
                 # A method's first parameter is the receiver, so the method
                 # is kept apart from the module's own functions.
@@ -546,7 +599,7 @@ class Translator:
             else:
                 self.defined_functions.setdefault(node.name, node)
         for child in ast.iter_child_nodes(node):
-            self.walk_bindings(child, node)
+            self.walk_bindings(child, node, path)
 
     # ---- scope ----------------------------------------------------------------------------
 
@@ -571,12 +624,32 @@ class Translator:
         self.walk_scope_bindings(body, bound, outer, module_scope)
         return bound - outer
 
-    def walk_scope_bindings(self, nodes, bound, outer, module_scope):
+    def value_names(self, body, module_scope):
+        """The names a scope binds to a value.
+
+        <p>A name the scope binds by an ASSIGNMENT is a value the scope
+        holds. An import binds a module object and a ``def`` binds a
+        function object, and the TAC holds neither as a variable: the
+        import's name is the receiver of a call, and the function's name
+        is the callee's key. So only an assignment produces a name with a
+        value in it -- and only such a name can be a SLOT, because a slot
+        is where a value lives.
+        """
+        bound = set()
+        outer = set()
+        self.walk_scope_bindings(body, bound, outer, module_scope, values_only=True)
+        return bound - outer
+
+    def walk_scope_bindings(self, nodes, bound, outer, module_scope, values_only=False):
         """Collect the names one scope binds.
 
         ``bound`` receives the names the scope binds to a value that is not a
         class; ``outer`` receives the names a ``global`` or ``nonlocal``
         statement gives to an outer scope.
+
+        <p>``values_only`` leaves out the names that are bound to something
+        the TAC does not hold as a variable: an import's name and a
+        function's name. What is left is the names that hold a VALUE.
         """
         for node in nodes:
             if isinstance(node, ast.ClassDef):
@@ -588,7 +661,7 @@ class Translator:
                 # scope of its own. At the module level the name is the
                 # module's own declaration, which the module's names already
                 # record.
-                if not module_scope:
+                if not module_scope and not values_only:
                     bound.add(node.name)
                 continue
             if isinstance(node, ast.Lambda):
@@ -617,18 +690,20 @@ class Translator:
                 continue
             if isinstance(node, ast.Import):
                 # `import a.b` binds the name `a`.
-                for alias in node.names:
-                    bound.add(alias.asname or alias.name.split(".")[0])
+                if not values_only:
+                    for alias in node.names:
+                        bound.add(alias.asname or alias.name.split(".")[0])
                 continue
             if isinstance(node, ast.ImportFrom):
-                for alias in node.names:
-                    bound.add(alias.asname or alias.name.split(".")[0])
+                if not values_only:
+                    for alias in node.names:
+                        bound.add(alias.asname or alias.name.split(".")[0])
                 continue
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
                 bound.add(node.id)
                 continue
             for child in ast.iter_child_nodes(node):
-                self.walk_scope_bindings([child], bound, outer, False)
+                self.walk_scope_bindings([child], bound, outer, False, values_only)
 
     # ---- the scopes of the functions ------------------------------------------------------
 
@@ -679,6 +754,7 @@ class Translator:
                 # A class body is NOT a scope its methods can see: a method
                 # reads the names of the function around it, not the
                 # attributes of its class.
+                self.class_enclosing[statement] = enclosing
                 self.collect_scope(statement.body, enclosing, visible, ancestors)
 
     def bound_names(self, node):
@@ -779,6 +855,285 @@ class Translator:
             for child in ast.iter_child_nodes(node):
                 self.collect_declared_globals([child], out)
 
+    # ---- the scope slots ------------------------------------------------------------------
+
+    def collect_scope_slots(self, tree):
+        """Read the scopes that live across the functions.
+
+        <p>A name belongs to exactly ONE scope, and the scope it belongs to
+        decides where its value lives. Three kinds of scope outlive the code
+        that writes into them:
+
+        <ul>
+          <li>the MODULE's scope -- the names the module binds;
+          <li>a CLASS's scope -- the names a class body binds;
+          <li>a FUNCTION's scope -- the names a nested function writes by
+              ``nonlocal``.
+        </ul>
+
+        <p>The value of such a name is a SLOT: a named location in a scope.
+        The TAC has no scope of its own, so a slot is a field access on a
+        synthetic owner, and the engine's cross-function field tracker is the
+        fact that carries a value from one function to another.
+
+        <p>So the pass answers two questions for every scope: which names
+        live in a slot it OWNS, and which names it touches in a slot AROUND
+        it. The second one is the USE-DEF question: a name a scope does not
+        bind is looked up in the scopes around it, and the scope that binds
+        it is the scope the name's value lives in.
+        """
+        self.module_value_names = self.value_names(tree.body, module_scope=True)
+        self.own_slots[tree] = {
+            name: self.module_scope_identity() for name in self.module_value_names
+        }
+        self.outer_slots[tree] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                self.read_function_slots(node)
+            elif isinstance(node, ast.Lambda):
+                self.read_lambda_slots(node)
+            elif isinstance(node, ast.ClassDef):
+                class_path = self.class_paths.get(node.name)
+                if class_path is None:
+                    continue
+                self.class_value_names[class_path] = self.value_names(
+                    node.body, module_scope=False
+                )
+                self.read_class_slots(node, class_path)
+        self.promote_cells(tree)
+
+    def read_function_slots(self, node):
+        """Read the slots one function's names live in.
+
+        <p>A name the function binds is its own -- unless a ``global`` or a
+        ``nonlocal`` statement gives it to a scope around it. A name the
+        function does not bind is looked up in the scopes around it, and the
+        scope that binds it is the scope the name's value lives in.
+
+        <p>A name an enclosing function binds is a CAPTURE, and a capture is
+        passed into the function as an argument -- so it needs no slot of its
+        own here.
+        """
+        globals_, nonlocals_ = self.declared_scopes(node.body)
+        locals_ = self.function_value_names(node)
+        loaded = set()
+        self.collect_loaded_names(node.body, loaded)
+        outer = {}
+        for name in globals_:
+            outer[name] = self.module_scope_identity()
+        for name in loaded - locals_ - globals_ - nonlocals_ - BUILTIN_NAMES:
+            if name in self.module_value_names:
+                outer[name] = self.module_scope_identity()
+        self.own_slots[node] = {}
+        self.outer_slots[node] = outer
+
+    def read_lambda_slots(self, node):
+        """Read the slots a lambda's names live in.
+
+        <p>A lambda is a scope of its own, so the rules are the function's
+        rules with nothing else in them.
+        """
+        globals_, nonlocals_ = self.declared_scopes([node.body])
+        locals_ = set()
+        for argument in node.args.args:
+            locals_.add(argument.arg)
+        loaded = set()
+        self.collect_loaded_names([node.body], loaded)
+        outer = {}
+        for name in loaded - locals_ - globals_ - nonlocals_ - BUILTIN_NAMES:
+            if name in self.module_value_names:
+                outer[name] = self.module_scope_identity()
+        self.own_slots[node] = {}
+        self.outer_slots[node] = outer
+
+    def read_class_slots(self, node, class_path):
+        """Read the slots one class body's names live in.
+
+        <p>A class body is a scope of its own: the names it binds are
+        attributes of the class, and they live in the class's scope. The
+        names it reads that it does not bind come from the scope around it.
+        """
+        own = {
+            name: self.class_scope_identity(class_path)
+            for name in self.class_value_names.get(class_path, ())
+        }
+        globals_, nonlocals_ = self.declared_scopes(node.body)
+        loaded = set()
+        self.collect_loaded_names(node.body, loaded)
+        outer = {}
+        for name in globals_:
+            outer[name] = self.module_scope_identity()
+        for name in loaded - set(own) - globals_ - nonlocals_ - BUILTIN_NAMES:
+            if name in self.module_value_names:
+                outer[name] = self.module_scope_identity()
+        self.own_slots[node] = own
+        self.outer_slots[node] = outer
+
+    def promote_cells(self, tree):
+        """Make the names a nested function writes by ``nonlocal`` into cells.
+
+        <p>A ``nonlocal`` name belongs to the scope around the function, so
+        the write lands there -- and the scope that binds the name has to
+        hold it somewhere that write can reach. So the name becomes a SLOT
+        of that scope: the scope writes it there, and the nested function
+        writes it there too.
+        """
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            _, nonlocals_ = self.declared_scopes(node.body)
+            for name in nonlocals_:
+                owner = self.enclosing_binder(node, name)
+                if owner is None:
+                    # A `nonlocal` with no scope around that binds the name
+                    # is a syntax error in Python. The module's scope is the
+                    # only thing left to say about where the name lives.
+                    continue
+                identity = self.function_scope_identity(owner)
+                self.own_slots.setdefault(owner, {})[name] = identity
+                self.outer_slots.setdefault(node, {})[name] = identity
+
+    def declared_scopes(self, nodes):
+        """The names a scope declares global and the names it declares nonlocal.
+
+        <p>Only the scope's OWN declarations count: a nested function's
+        ``global`` says something about that function, not about this one.
+        """
+        globals_ = set()
+        nonlocals_ = set()
+        for node in nodes:
+            if isinstance(
+                node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+            ):
+                continue
+            if isinstance(node, ast.Global):
+                globals_.update(node.names)
+                continue
+            if isinstance(node, ast.Nonlocal):
+                nonlocals_.update(node.names)
+                continue
+            inner_globals, inner_nonlocals = self.declared_scopes(
+                list(ast.iter_child_nodes(node))
+            )
+            globals_.update(inner_globals)
+            nonlocals_.update(inner_nonlocals)
+        return globals_, nonlocals_
+
+    def enclosing_binder(self, node, name):
+        """The function around this one that binds the name.
+
+        <p>A ``nonlocal`` name belongs to the nearest enclosing FUNCTION that
+        binds it. A class body is not a function scope, so a class body's
+        ``nonlocal`` looks past the class to the function around it.
+        """
+        if isinstance(node, ast.ClassDef):
+            enclosing = self.class_enclosing.get(node)
+        else:
+            enclosing = self.function_enclosing.get(node)
+        while enclosing is not None:
+            if name in self.function_value_names(enclosing):
+                return enclosing
+            enclosing = self.function_enclosing.get(enclosing)
+        return None
+
+    def function_value_names(self, node):
+        """The names a function binds to a value."""
+        cached = self.function_values.get(id(node))
+        if cached is None:
+            names = self.value_names(node.body, module_scope=False)
+            for parameter in self.parameters_of(node):
+                names.add(parameter.arg)
+            self.function_values[id(node)] = names
+            cached = names
+        return cached
+
+    def module_scope_identity(self):
+        """The identity of the module's own scope."""
+        return "module:%s" % self.module_name
+
+    def class_scope_identity(self, class_path):
+        """The identity of a class's scope."""
+        return "class:%s" % self.class_identity(class_path)
+
+    def function_scope_identity(self, node):
+        """The identity of a function's scope."""
+        path = self.function_paths.get(id(node)) or "<unknown>"
+        return "function:%s.%s" % (self.module_name, path)
+
+    def scope_owner(self, identity):
+        """The synthetic variable that stands for a scope.
+
+        <p>A slot is a field access on an owner, and the engine keys such an
+        access on "<the owner's type>.<the field's name>". So the owner's
+        TYPE carries the scope's identity, and that is what keeps two
+        scopes two scopes: two modules with a name of the same name in them
+        are two slots, and so are a module's scope and a class's.
+
+        <p>The owner's NAME has to start with an uppercase letter: the engine
+        records a field write at the class level only when the receiver looks
+        like a class name, and a scope owner is exactly that -- the thing
+        that owns the name.
+        """
+        owner = self.scope_owners.get(identity)
+        if owner is None:
+            base = "Scope_%s" % re.sub(r"[^A-Za-z0-9_]", "_", identity)
+            name = base
+            suffix = 1
+            while name in self.scope_owner_names:
+                suffix += 1
+                name = "%s_%d" % (base, suffix)
+            self.scope_owner_names[name] = identity
+            owner = var_op(name, {"kind": Type.CLASS, "name": identity})
+            self.scope_owners[identity] = owner
+        return owner
+
+    def write_slot(self, identity, name, value, node):
+        """A write to a slot: a name that lives in a scope.
+
+        <p>The write lands in the scope, so the value is there for every
+        function that reads the name -- which is what a scope is for.
+        """
+        self.emit(
+            {
+                "kind": Kind.FIELDSTORE,
+                "lhs1": self.scope_owner(identity),
+                "fieldName": name,
+                "dest": value,
+                **self.position(node),
+            }
+        )
+
+    def read_slot(self, identity, name, node):
+        """A read of a slot: a name that lives in a scope.
+
+        @return the operand the read produced
+        """
+        dest = self.state.new_temp(self.tac_type_of_variable(name))
+        self.emit(
+            {
+                "kind": Kind.FIELDLOAD,
+                "dest": dest,
+                "lhs1": self.scope_owner(identity),
+                "fieldName": name,
+                **self.position(node),
+            }
+        )
+        return dest
+
+    def slot_of(self, name):
+        """The scope a name lives in, when it lives in a scope and not here.
+
+        <p>A name belongs to exactly ONE scope. This is the lookup that
+        decides where the value of a name lives: the scope that BOUND it,
+        and not the scope the code that touches it runs in.
+        """
+        if self.state is None:
+            return None
+        slot = self.state.outer_slots.get(name)
+        if slot is not None:
+            return slot
+        return self.state.own_slots.get(name)
+
     def can_pass_captures(self, definition):
         """Whether the call being lowered can pass a closure's captures.
 
@@ -844,6 +1199,8 @@ class Translator:
         state.shadowed_names = self.scope_shadowed_names([node.body])
         for parameter in self.parameters_of(node):
             state.shadowed_names.add(parameter.arg)
+        state.own_slots = self.own_slots.get(node, {})
+        state.outer_slots = self.outer_slots.get(node, {})
         for capture in captures:
             declared = outer.types.get(capture) if outer is not None else None
             if declared:
@@ -1065,12 +1422,16 @@ class Translator:
         for parameter in self.parameters_of(node):
             state.shadowed_names.add(parameter.arg)
         if self.receiver_kind(node) == "class":
-            # A CLASS METHOD's first parameter IS the class: a call on it is
-            # a call on the class, and the receiver slot holds the class
+            # A CLASS METHOD's first parameter IS the class: a call on the
+            # class, and the receiver slot holds the class
             # object and not an instance.
             declared = self.parameters_of(node)
             if declared:
                 state.class_receiver = declared[0].arg
+        # The names this function binds live in its own scope, and the names
+        # it touches in a scope around it live there.
+        state.own_slots = self.own_slots.get(node, {})
+        state.outer_slots = self.outer_slots.get(node, {})
         for name in captures:
             declared = outer.types.get(name) if outer is not None else None
             if declared:
@@ -1106,6 +1467,8 @@ class Translator:
         state.shadowed_names = self.scope_shadowed_names(node.body)
         for parameter in self.parameters_of(node):
             state.shadowed_names.add(parameter.arg)
+        state.own_slots = self.own_slots.get(node, {})
+        state.outer_slots = self.outer_slots.get(node, {})
         self.annotate(state, node, "method")
         try:
             self.lower_parameters(node)
@@ -1326,7 +1689,11 @@ class Translator:
         # it is an attribute of the class. So the body says which class it
         # belongs to, and a name written in it goes to that class.
         self.class_body_owner = class_path
-        state.class_body_names = self.class_body_names(node)
+        # The names the class body binds are attributes of the class, so
+        # they live in the CLASS's scope: a method that reads one finds
+        # the value the body gave it.
+        state.own_slots = self.own_slots.get(node, {})
+        state.outer_slots = self.outer_slots.get(node, {})
         try:
             # The class's own decorators run when the class is created, so
             # they belong to the class body's own stream.
@@ -1575,79 +1942,14 @@ class Translator:
                 # it.
                 self.guard(statement, lambda s=statement: self.lower_statement(s))
 
-    def class_body_names(self, node):
-        """The names a class body binds.
-
-        They are attributes of the class: a name written in the body and a
-        name read in the body are the same location, and both are the
-        class's and not the body's.
-
-        A name a ``global`` or a ``nonlocal`` statement gives to an outer
-        scope is not one of them.
-        """
-        bound = set()
-        outer = set()
-        self.walk_scope_bindings(node.body, bound, outer, False)
-        return bound - outer
-
-    def write_class_attribute(self, owner, name, value, node):
-        """A name written in a class body: an attribute of the CLASS.
-
-        The receiver is the class object, so that a read of the attribute
-        finds the value the declaration wrote.
-
-        @param owner the class path of the class the name belongs to
-        @param name the name being written
-        @param value the value being written
-        @param node the AST node the position is taken from
-        """
-        class_object = self.class_object_of(owner)
-        self.emit(
-            {
-                "kind": Kind.ARRAYSTORE,
-                "lhs1": class_object,
-                "lhs2": const_op(Const.STRING, name),
-                "dest": value,
-                "ownerType": owner,
-                **self.position(node),
-            }
-        )
-
-    def read_class_attribute(self, owner, name, node):
-        """A name read in a class body: an attribute of the CLASS.
-
-        It reads the same location the write wrote, so that a value the
-        class body gave a name is the value a later read of that name sees.
-
-        @param owner the class path of the class the name belongs to
-        @param name the name being read
-        @param node the AST node the position is taken from
-        @return the operand the read produced
-        """
-        class_object = self.class_object_of(owner)
-        dest = self.state.new_temp(self.tac_type_of_variable(name))
-        self.emit(
-            {
-                "kind": Kind.ARRAYLOAD,
-                "dest": dest,
-                "lhs1": class_object,
-                "lhs2": const_op(Const.STRING, name),
-                **self.position(node),
-            }
-        )
-        return dest
-
     def lower_class_attribute(self, statement):
         """A class attribute: a member of the CLASS, not of an instance.
 
-        The receiver is the class object, so that a read of the attribute
-        finds the value the declaration wrote.
+        The name lives in the CLASS's scope, so the write lands there: a
+        method that reads the attribute finds the value the body wrote. A
+        name a ``global`` statement gives to the module is the MODULE's
+        name, and it lands there instead.
         """
-        owner = (
-            self.class_body_owner
-            or self.class_path_of(self.state.enclosing_class)
-            or self.module_name
-        )
         targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
         value = None
         if isinstance(statement, ast.Assign):
@@ -1656,7 +1958,7 @@ class Translator:
             value = self.lower_expression(statement.value)
         for target in targets:
             if isinstance(target, ast.Name):
-                self.write_class_attribute(owner, target.id, value, target)
+                self.lower_write(target, value, statement)
                 if isinstance(statement, ast.AnnAssign):
                     annotation = self.annotation_name(statement.annotation)
                     if annotation:
@@ -2035,16 +2337,16 @@ class Translator:
         A name is a local variable; an attribute and a subscript are entries
         of a namespace, so they are container stores with the key as the
         index.
+
+        <p>A name that lives in a SCOPE is not a local: it is the module's
+        own name, a ``global`` name, a ``nonlocal`` name, or an attribute of
+        a class. So the write lands in that scope, and every function that
+        reads the name finds it.
         """
         if isinstance(target, ast.Name):
-            if self.class_body_owner is not None and self.comp_local(target.id) == target.id:
-                # A name written in a class body is an attribute of the
-                # CLASS and not a local of the stream that lowers the body.
-                # A name a comprehension owns is that comprehension's own,
-                # and the comprehension is a scope of its own.
-                self.write_class_attribute(
-                    self.class_body_owner, target.id, value, target
-                )
+            slot = self.slot_of(target.id)
+            if slot is not None:
+                self.write_slot(slot, target.id, value, target)
                 self.infer_type_of(
                     target.id, node.value if isinstance(node, ast.Assign) else None
                 )
@@ -2933,14 +3235,12 @@ class Translator:
         if isinstance(node, ast.Constant):
             return self.lower_constant(node)
         if isinstance(node, ast.Name):
-            if (
-                self.class_body_owner is not None
-                and node.id in self.state.class_body_names
-                and self.comp_local(node.id) == node.id
-            ):
-                # A name the class body binds is an attribute of the class,
-                # so a read of it in the body reads that attribute.
-                return self.read_class_attribute(self.class_body_owner, node.id, node)
+            slot = self.slot_of(node.id)
+            if slot is not None:
+                # The name lives in a scope, so the read finds the value
+                # that scope holds: the module's own name, a ``global``
+                # name, a ``nonlocal`` name, or an attribute of a class.
+                return self.read_slot(slot, node.id, node)
             return var_op(self.comp_local(node.id), self.tac_type_of_variable(node.id))
         if isinstance(node, ast.Attribute):
             return self.lower_attribute_read(node)
@@ -3039,7 +3339,13 @@ class Translator:
         a string key and not a field access. ``obj.name`` and
         ``obj["name"]`` are the same location, and the engine's keyed
         namespace is what keeps them together.
+
+        <p>But a name a CLASS declares is not in the instance's namespace:
+        it is in the class's own scope, and that is where it lives.
         """
+        scope = self.class_scope_of_attribute(node)
+        if scope is not None:
+            return self.read_slot(scope, node.attr, node)
         receiver = self.lower_expression(node.value)
         key = const_op(Const.STRING, node.attr)
         dest = self.state.new_temp()
@@ -3053,6 +3359,29 @@ class Translator:
             }
         )
         return dest
+
+    def class_scope_of_attribute(self, node):
+        """The scope a class attribute lives in, when the attribute is one.
+
+        <p>An attribute read of a CLASS this module declares is a read of
+        that class's own scope -- when the class body binds the name. The
+        name is what decides it: a class body that binds a name gives the
+        class that attribute.
+
+        <p>A local that shadows the class's name is not the class, so the
+        attribute belongs to the local's namespace and not to the class's.
+        """
+        if not isinstance(node.value, ast.Name):
+            return None
+        name = node.value.id
+        if self.state is not None and name in self.state.shadowed_names:
+            return None
+        class_path = self.class_paths.get(name)
+        if class_path is None:
+            return None
+        if node.attr not in self.class_value_names.get(class_path, ()):
+            return None
+        return self.class_scope_identity(class_path)
 
     def lower_subscript_read(self, node):
         """A read of an item: ``obj[key]``."""
@@ -3588,7 +3917,7 @@ class Translator:
             )
         leading = []
         for name in callee.get("leading") or []:
-            leading.append(var_op(name, self.tac_type_of_variable(name)))
+            leading.append(self.capture_value(name, node))
         args = [callee["receiver"]] + leading + arguments
         dest = self.state.new_temp(self.tac_type_of_name(self.return_type_of_callee(callee)))
         kind = Kind.CALL if callee["resolved"] else Kind.UNINTERPRETED
@@ -3755,6 +4084,19 @@ class Translator:
             )
             return self.lower_expression(node.value)
         return self.lower_expression(node)
+
+    def capture_value(self, name, node):
+        """The value a capture carries into the closure.
+
+        <p>A capture is a name the scope around the closure binds. When that
+        scope holds the name in a SLOT -- which a ``nonlocal`` somewhere
+        makes it -- the value that goes into the closure is the slot's
+        value, and the slot is where the closure's own write lands.
+        """
+        slot = self.state.own_slots.get(name) if self.state is not None else None
+        if slot is None:
+            return var_op(name, self.tac_type_of_variable(name))
+        return self.read_slot(slot, name, node)
 
     def resolve_callee(self, node):
         """The callee of a call: its owner, its name and its arity.

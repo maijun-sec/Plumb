@@ -472,6 +472,35 @@ cannot resolve stands for every key.
 is `name`, so that a later `obj.name` finds the value that was written. A
 write that is dropped is a taint that stops halfway.
 
+## The scopes: a name that lives in a scope is a slot, not a local
+
+An **attribute** belongs to an object. A **scope** outlives the code that
+writes into it: a module's own names, a class body's names, and the names a
+nested function writes by `nonlocal` are all scopes. A name belongs to
+exactly one scope, and the scope it belongs to decides where its value
+lives.
+
+The TAC has no scope of its own, so a scope's slot is a **field access on a
+synthetic owner**:
+
+- the owner stands for the scope;
+- the field's name is the name inside the scope;
+- the owner's **type** carries the scope's identity, so the engine's
+  cross-function field tracker keys it as `<identity>.<name>` -- two modules
+  with a global of the same name are two slots, and a module's scope and a
+  class's scope are two scopes;
+- the owner's **name** starts with an upper-case letter, because the engine
+  records a field write at the class level only when the receiver looks like
+  a class name.
+
+So a scope slot is a `FIELDLOAD` / a `FIELDSTORE`, while an **attribute is
+still not a field**: `obj.name` remains an `ARRAYLOAD` / an `ARRAYSTORE` with
+the name as the key. The two are different locations and they stay that way.
+
+The identities are `module:<module>`, `class:<class>` and
+`function:<module>.<path>`; a colon cannot occur in a Java class name, so a
+scope identity never collides with one.
+
 ## The operators
 
 A binary operator is a `BINOP`, and the operator table is keyed by the
