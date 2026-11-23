@@ -54,6 +54,16 @@
 # accepts a prefix of zero length will match a receiver merely CALLED String,
 # Map or Path -- in any language.
 #
+# HOW THE PREFIX IS WRITTEN.  An optional package prefix is spelled
+# `^(?:[\w.]+\.)?` and NOT `^((?:[\w.]+\.)*)`.  The two accept the same
+# prefixes -- the character class contains a DOT, so ONE repetition still
+# swallows any number of package segments -- but the second form lets the
+# class split a run of dots 2^(k-1) ways, which is the classic
+# catastrophic-backtracking shape: 24 dots cost 2.9 seconds and 26 dots cost
+# 10.2 seconds, per pattern, per call site.  The first form is linear
+# (8 microseconds at 26 dots) and is the form the engine's own
+# `SinkFamily.relaxedForm()` produces.
+#
 # So a family states the languages its callees belong to, and the engine
 # applies the family only to code written in one of them. A family that
 # declares no language applies to every language.
@@ -72,10 +82,10 @@
 #       enabled: true
 #       languages: [java, kotlin, scala, groovy, csharp]
 #       patterns:                     # every language of the family
-#         - '^((?:[\w.]+\.)*)Map\.get(/\d+)?'
+#         - '^(?:[\w.]+\.)?Map\.get(/\d+)?'
 #       by_language:                  # only the language that can mention it
 #         csharp:
-#           - '^((?:[\w.]+\.)*)Dictionary\.get(/\d+)?'
+#           - '^(?:[\w.]+\.)?Dictionary\.get(/\d+)?'
 #
 # A bucket for a language the family does not cover is DEAD: the family does
 # not apply to that language, so its patterns can never fire. The loader says
@@ -91,17 +101,17 @@ families:
     enabled: true
     languages: [java, kotlin, scala, groovy]
     patterns:
-      - pattern: '^((?:[\w.]+\.)*)Path\.resolve\b(/\d+)?'
+      - pattern: '^(?:[\w.]+\.)?Path\.resolve\b(/\d+)?'
         arg_index: 0
-      - pattern: '^((?:[\w.]+\.)*)Paths\.get\b(/\d+)?'
+      - pattern: '^(?:[\w.]+\.)?Paths\.get\b(/\d+)?'
         arg_index: 0
-      - pattern: '^((?:[\w.]+\.)*)String\.valueOf\b(/\d+)?'
+      - pattern: '^(?:[\w.]+\.)?String\.valueOf\b(/\d+)?'
         arg_index: 0
-      - pattern: '^((?:[\w.]+\.)*)String\.format\b(/\d+)?'
+      - pattern: '^(?:[\w.]+\.)?String\.format\b(/\d+)?'
         arg_index: any
-      - pattern: '^((?:[\w.]+\.)*)String\.join\b(/\d+)?'
+      - pattern: '^(?:[\w.]+\.)?String\.join\b(/\d+)?'
         arg_index: any
-      - pattern: '^((?:[\w.]+\.)*)File\.newInstance\b(/\d+)?'
+      - pattern: '^(?:[\w.]+\.)?File\.newInstance\b(/\d+)?'
         arg_index: 0
 
   library-argument-passthrough-csharp:
@@ -711,3 +721,192 @@ families:
         arg_index: any
       - pattern: '^google\.golang\.org/grpc/metadata\.(Join|Pairs)(/\d+)?'
         arg_index: any
+
+  # ===== the script languages =====
+
+  # The three families below cover the languages whose front end is a SIDE CAR.
+  # A side car spells a callee signature in a shape of its own, and the shapes
+  # are the reason a rule written the Java way would never fire on them.
+  #
+  # WHAT THE SHAPES ARE.  Every pattern below was written against a signature
+  # the side car actually emitted, not against the documentation of the
+  # library it names.  Three shapes occur:
+  #
+  #   - the library's OWN NAME is the owner: `String.String/1`,
+  #     `parseInt.parseInt/2`, `escape/1`;
+  #   - the MODULE the call reached is the owner: `JSON.parse/2`,
+  #     `path.join/2`, `fs.readFileSync/2`, `json.dumps/1`;
+  #   - the owner is a PLACEHOLDER: `<unknown>.strip/0` in Python,
+  #     `\::getMessage/0` in PHP.
+  #
+  # The first shape is why the rules below spell the owner out instead of
+  # accepting any prefix: `String.String/1` and `String.trim/0` differ only
+  # in what follows the owner's dot, and a pattern that stopped at the owner
+  # would match both -- so the rule for `String(x)` would fire on `trim()`.
+  #
+  # WHAT IS NOT HERE.  A call that CONSUMES a tainted value is not a
+  # passthrough: `child_process.exec(cmd)` does not return cmd, and `eval(s)`
+  # does not return s.  Those are sinks, and the sink table names them.
+  # A rule that said "the argument's taint reaches the result" for them
+  # would report the taint twice and would claim the command's own output
+  # carries the command text.
+
+  library-argument-passthrough-javascript:
+    enabled: true
+    languages: [javascript, typescript, arkts]
+    patterns:
+      # -- the conversions: the result IS the argument, in another shape
+      - pattern: '^String\.String(/\d+)?'
+        arg_index: 0
+      - pattern: '^Number\.Number(/\d+)?'
+        arg_index: 0
+      - pattern: '^Boolean\.Boolean(/\d+)?'
+        arg_index: 0
+      # -- the numeric parsers: the number is built from the argument's text
+      - pattern: '^parseInt\.parseInt(/\d+)?'
+        arg_index: 0
+      - pattern: '^parseFloat\.parseFloat(/\d+)?'
+        arg_index: 0
+      - pattern: '^NumberConstructor\.(parseInt|parseFloat)\b(/\d+)?'
+        arg_index: 0
+      # -- the percent-encoders: the result carries the argument's bytes
+      - pattern: '^encodeURI\.encodeURI(/\d+)?'
+        arg_index: 0
+      - pattern: '^decodeURI\.decodeURI(/\d+)?'
+        arg_index: 0
+      - pattern: '^encodeURIComponent\.encodeURIComponent(/\d+)?'
+        arg_index: 0
+      - pattern: '^decodeURIComponent\.decodeURIComponent(/\d+)?'
+        arg_index: 0
+      - pattern: '^escape(/\d+)?'
+        arg_index: 0
+      - pattern: '^unescape(/\d+)?'
+        arg_index: 0
+      - pattern: '^atob(/\d+)?'
+        arg_index: 0
+      - pattern: '^btoa(/\d+)?'
+        arg_index: 0
+      # -- the serialisers: the result is built from the argument's data
+      - pattern: '^JSON\.(parse|stringify)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^Buffer\.from(/\d+)?'
+        arg_index: 0
+      - pattern: '^ArrayConstructor\.from(/\d+)?'
+        arg_index: 0
+      - pattern: '^ObjectConstructor\.values(/\d+)?'
+        arg_index: 0
+      # -- the joiners: the result is built from the joined parts.  The owner
+      #    is optional because the module a script reaches is not always
+      #    resolved -- a call to `path.join` in a file that does not import
+      #    `path` arrives as `join/2` -- and because the same rule is right
+      #    for `Array.join` and `String.concat`, whose part is the argument
+      #    as well.
+      - pattern: '^(?:[\w.]+\.)?(join|concat)\b(/\d+)?'
+        arg_index: [0, 1]
+      # -- the path builders: the result is built from the argument's path
+      - pattern: '^(?:[\w.]+\.)?(resolve|normalize|basename|dirname|extname)\b(/\d+)?'
+        arg_index: 0
+      # -- the format string builder: the result is built from the format
+      #    AND from the values.  The format itself is a SINK; the values
+      #    are what reach the result.
+      - pattern: '^util\.format(/\d+)?'
+        arg_index: [0, 1]
+
+  library-argument-passthrough-python:
+    enabled: true
+    languages: [python3]
+    patterns:
+      # -- the conversions: the result IS the argument, in another shape.
+      #    The NUMERIC conversions are not here: `int(x)` is a number, not
+      #    the text of x, and the taint domain is a string domain.
+      - pattern: '^builtins\.(str|bytes|bytearray|list|tuple|set|frozenset|dict)\b(/\d+)?'
+        arg_index: 0
+      # -- the formatters and the re-orders: the result is built from the
+      #    argument's elements
+      - pattern: '^builtins\.(format|repr|sorted|reversed|iter|enumerate|zip)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^builtins\.getattr\b(/\d+)?'
+        arg_index: 0
+      # -- the serialisers: the result is built from the argument's data
+      - pattern: '^json\.(dumps|loads)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^pickle\.dumps\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^base64\.(b64encode|b64decode|b32encode|b32decode)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^codecs\.(encode|decode)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^hashlib\.(md5|sha1|sha256)\b(/\d+)?'
+        arg_index: 0
+      # -- the percent-encoders: the result carries the argument's bytes
+      - pattern: '^urllib\.parse\.(quote|quote_plus|unquote|unquote_plus|urlencode)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^shlex\.quote\b(/\d+)?'
+        arg_index: 0
+      # -- the path builders: the result is built from the argument's path
+      - pattern: '^os\.path\.join\b(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^os\.path\.(abspath|basename|dirname|normpath|realpath|expanduser|splitext)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^pathlib\.Path\b(/\d+)?'
+        arg_index: 0
+      # -- the regular expressions: the result is built from the SUBJECT
+      #    and, for a substitution, from the replacement
+      - pattern: '^re\.(match|search|fullmatch|findall|finditer|split)\b(/\d+)?'
+        arg_index: 1
+      - pattern: '^re\.(sub|subn)\b(/\d+)?'
+        arg_index: [1, 2]
+      # -- the string's own methods.  The owner is the side car's
+      #    PLACEHOLDER, not a name: the front end could not resolve the
+      #    receiver's type, so it says so rather than guessing.
+      - pattern: '^<unknown>\.format\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^<unknown>\.join\b(/\d+)?'
+        arg_index: 0
+
+  library-argument-passthrough-php:
+    enabled: true
+    languages: [php]
+    patterns:
+      # A PHP global function is spelled `\name`, and a function in a
+      # namespace is spelled `Name\Space\name` -- so the optional leading
+      # backslash and the optional namespace are two different things.
+      - pattern: '^\\?(?:[\w]+\\)*(trim|ltrim|rtrim|strtolower|strtoupper|ucfirst|ucwords|strrev|nl2br|wordwrap|quotemeta|addslashes|stripslashes)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^\\?(?:[\w]+\\)*(str_repeat|str_pad|chunk_split|str_split)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^\\?(?:[\w]+\\)*(substr)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^\\?(?:[\w]+\\)*(str_replace|str_ireplace)\b(/\d+)?'
+        arg_index: [1, 2]
+      - pattern: '^\\?(?:[\w]+\\)*(substr_replace)\b(/\d+)?'
+        arg_index: [0, 1]
+      # -- the percent-encoders and the base64 codecs: the result carries
+      #    the argument's bytes
+      - pattern: '^\\?(?:[\w]+\\)*(urlencode|rawurlencode|urldecode|rawurldecode)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^\\?(?:[\w]+\\)*(htmlspecialchars|htmlentities|html_entity_decode|htmlspecialchars_decode)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^\\?(?:[\w]+\\)*(base64_encode|base64_decode)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^\\?(?:[\w]+\\)*(json_encode|json_decode)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^\\?(?:[\w]+\\)*(strval)\b(/\d+)?'
+        arg_index: 0
+      # -- the formatters: the result is built from the format AND from the
+      #    values.  The format itself is a SINK.
+      - pattern: '^\\?(?:[\w]+\\)*(sprintf|vsprintf)\b(/\d+)?'
+        arg_index: any
+      # -- the array builders: the result is built from the array
+      - pattern: '^\\?(?:[\w]+\\)*(implode|join)\b(/\d+)?'
+        arg_index: [0, 1]
+      - pattern: '^\\?(?:[\w]+\\)*(explode)\b(/\d+)?'
+        arg_index: 1
+      - pattern: '^\\?(?:[\w]+\\)*(array_map)\b(/\d+)?'
+        arg_index: 1
+      - pattern: '^\\?(?:[\w]+\\)*(array_filter|array_values)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^\\?(?:[\w]+\\)*(array_merge)\b(/\d+)?'
+        arg_index: any
+      - pattern: '^\\?(?:[\w]+\\)*(preg_replace|preg_replace_callback)\b(/\d+)?'
+        arg_index: [1, 2]

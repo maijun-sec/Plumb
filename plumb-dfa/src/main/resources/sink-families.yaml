@@ -120,7 +120,7 @@ families:
   format-string.sinks:
     cwe: CWE-134
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go', 'typescript', 'javascript', 'arkts', 'php']
+    languages: ['java', 'kotlin', 'scala', 'go', 'typescript', 'javascript', 'arkts', 'php', 'python3']
     patterns:
       # The word boundary says this entry names `format` and not
       # `formatted`: the format of a formatted() call is the receiver,
@@ -174,6 +174,15 @@ families:
       # The format string is the FIRST argument of all four.
       - pattern: '^\\(printf|sprintf|vprintf|vsprintf)\b(/\d+)?'
         arg_index: 0
+      # `fprintf` writes to a stream, so the format is its SECOND argument.
+      - pattern: '^\\fprintf\b(/\d+)?'
+        arg_index: 1
+      python3:
+      # Python has no format-string function: the format is the RECEIVER of
+      # a `format` call -- `"...".format(x)` -- so the entry reads the
+      # receiver, the same way the Java `formatted()` entry does.
+      - pattern: '^<unknown>\.format\b(/\d+)?'
+        arg_index: -2
   log.sinks:
     cwe: CWE-117
     severity: MEDIUM
@@ -957,6 +966,19 @@ families:
         #
         # The command line is the FIRST argument, so arg_index is 0.
         - pattern: '^(?:node:)?child_process\.(execSync|execFileSync|spawnSync|execFile|exec|spawn|fork)\b(/\d+)?'
+          arg_index: 0
+        # The same calls, reached THROUGH the require: an inline
+        # `require("child_process").exec(cmd)` has no owner the front end
+        # can name, so it arrives as `exec/1` and the entry above never
+        # sees it.
+        #
+        # The trade is deliberate.  A bare `exec` could also be a regular
+        # expression's `exec`, whose result is a match and not a command --
+        # but the type-aware front ends spell that one `RegExp.exec`, so
+        # the bare form is the inline require.  `spawn` and `fork` are NOT
+        # listed here: those names are common enough on their own that the
+        # bare form would claim a call that is not a command at all.
+        - pattern: '^(exec|execSync|execFileSync|spawnSync)(/\d+)?'
           arg_index: 0
       python3:
         # os.system runs its argument through the SHELL, so a tainted
@@ -6852,7 +6874,7 @@ families:
       scala:
         - pattern: '^slick\.jdbc\.SQLActionBuilder\.\<init\>(/\d+)?'
           arg_index: 0
-      typescript,javascript:
+      typescript,javascript,arkts:
         # The client packages, named by the module they came from. A project
         # that wraps its own database client names something the catalogue
         # cannot know, and those calls are out of reach -- deliberately,
@@ -7175,6 +7197,9 @@ families:
         # The prompt the program waits on. Whatever the user types there
         # is attacker-controlled by definition.
         - '^builtins\.input\b(/\d+)?'
+        # The standard input, read a line at a time or all at once.
+        - '^sys\.stdin\.read\b(/\d+)?'
+        - '^sys\.stdin\.readline\b(/\d+)?'
     source_variables:
       # The command line and the standard input: what the program was
       # told, rather than what it decided.
@@ -7229,6 +7254,8 @@ families:
       python3:
         # An environment variable: the program did not choose its value.
         - '^os\.environ\.get\b(/\d+)?'
+        # The other spelling of the same read.
+        - '^os\.getenv\b(/\d+)?'
       php:
         # An environment variable: the program did not choose its value.
         - '^\\getenv\b(/\d+)?'
@@ -7236,7 +7263,7 @@ families:
   taint.sources.io:
     cwe: null
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'javascript', 'typescript', 'arkts', 'php']
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'javascript', 'typescript', 'arkts', 'php', 'python3']
     patterns:
       - '^java\.io\.InputStream\.read(/\d+)?'
       - '^java\.io\.Reader\.read(/\d+)?'
@@ -7295,14 +7322,29 @@ families:
         # A file read hands back content the program did not write.
         - pattern: '^(?:node:)?fs\.(readFile|readFileSync)\b(/\d+)?'
         - pattern: '^(?:node:)?fs/promises\.readFile(/\d+)?'
+        # A read STREAM hands back the same content, a chunk at a time.
+        - pattern: '^(?:node:)?fs\.createReadStream\b(/\d+)?'
+      python3:
+        # The content of a file the program did not write. It is the READ
+        # that is the source, not the OPEN: `open` is already a path defect
+        # (file-path.sinks), and the two roles are different -- one names the
+        # path, the other names the bytes. The side car spells the reader's
+        # owner as the placeholder for "the type could not be resolved".
+        - pattern: '^<unknown>\.read\b(/\d+)?'
+        - pattern: '^<unknown>\.readlines\b(/\d+)?'
+        - pattern: '^<unknown>\.read_text\b(/\d+)?'
       php:
         # The content of a file the program did not write.
         - '^\\file_get_contents\b(/\d+)?'
+        # A stream read: the same content, read from a handle.
+        - '^\\stream_get_contents\b(/\d+)?'
+        # `file` hands back the file's lines as an array.
+        - '^\\file\b(/\d+)?'
 
   taint.sources.network:
     cwe: null
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'python3']
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'python3', 'typescript', 'javascript', 'arkts']
     patterns:
       - '^java\.net\.Socket\.getInputStream(/\d+)?'
       - '^java\.net\.DatagramSocket\.receive(/\d+)?'
@@ -7326,11 +7368,20 @@ families:
       # The bytes that arrived over the socket are what the call RETURNS,
       # so the source is the call and the tainted value is its result.
       - pattern: '^socket\.recv\b(/\d+)?'
+      # The side car spells the RECEIVER's owner as the placeholder for "the
+      # type could not be resolved", so the socket method arrives with that
+      # owner and not with the class the library declares it on.
+      - pattern: '^<unknown>\.recv\b(/\d+)?'
+      typescript,javascript,arkts:
+        # The body of an HTTP response: the program did not write it.
+        - pattern: '^http\.get\b(/\d+)?'
+        - pattern: '^https\.get\b(/\d+)?'
+        - pattern: '^fetch\.fetch\b(/\d+)?'
 
   taint.sources.web:
     cwe: null
     severity: MEDIUM
-    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'php']
+    languages: ['java', 'kotlin', 'scala', 'go', 'csharp', 'php', 'typescript', 'javascript', 'arkts', 'python3']
     source_variables:
       # The request itself, as PHP spells it. A superglobal is not a call --
       # $_GET['user'] is a container access -- so there is no signature for a
@@ -7345,6 +7396,27 @@ families:
         - '_POST'
         - '_REQUEST'
         - '_COOKIE'
+      # The browser's own copy of the request. A URL's query and fragment
+      # and a page's referrer are written by whoever sent the link, so they
+      # are the script's input as much as a form field is.
+      typescript,javascript,arkts:
+        - 'location.search'
+        - 'location.hash'
+        - 'document.location.href'
+        - 'document.location.search'
+        - 'document.referrer'
+        - 'document.cookie'
+      # The framework's request object. Its dictionaries are the query
+      # string, the form body and the cookies of the request that is being
+      # served.
+      python3:
+        - 'request.args'
+        - 'request.form'
+        - 'request.values'
+        - 'request.cookies'
+        - 'request.json'
+        - 'request.get_json'
+        - 'request.data'
     patterns:
       - '^javax\.servlet\.http\.HttpServletRequest\.getParameter(/\d+)?'
       - '^javax\.servlet\.http\.HttpServletRequest\.getHeader(/\d+)?'
@@ -8538,7 +8610,7 @@ families:
           arg_index: [0, 1]
         - pattern: '^akka\.http\.(java|scala)dsl\.model\.HttpEntity\.apply(/\d+)?'
           arg_index: [0, 1]
-      typescript,javascript:
+      typescript,javascript,arkts:
       # document.write puts the argument into the page as markup.
       - pattern: '^Document\.(write|writeln)\b(/\d+)?'
         arg_index: 0
