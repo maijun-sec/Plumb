@@ -1270,11 +1270,7 @@ export class Translator {
         return;
       }
       case "throw":
-        this.emit({
-          kind: KIND.THROW,
-          lhs1: node.what ? this.lowerExpression(node.what) : undefined,
-          ...this.position(node),
-        });
+        this.lowerThrow(node);
         return;
       case "if":
         this.lowerIf(node);
@@ -1361,6 +1357,31 @@ export class Translator {
       default:
         this.report(PROBLEM.UNHANDLED_NODE, node, "this statement has no TAC lowering");
     }
+  }
+
+  /**
+   * A `throw`: the function's exceptional exit.
+   *
+   * PHP 8 made `throw` an EXPRESSION, so the same shape appears in two places: as a
+   * statement, and inside an expression (`$x = throw new E();`, `f(throw new E())`). The
+   * two are the same event, so they are lowered the same way.
+   *
+   * The expression form used to have NO lowering at all: the expression switch had no case
+   * for it, so the whole thing fell through to the fallback, which threw. The statement that
+   * the fallback produced named the construct, and the file kept going -- but the THROW was
+   * never emitted, and neither was the CONSTRUCTION of the exception that the `throw` names.
+   * So a `throw new RuntimeException($userInput)` lost the tainted value that went into the
+   * exception, and the function that throws lost the fact that it throws.
+   *
+   * @param node the `throw` node
+   */
+  lowerThrow(node) {
+    const thrown = node.what ? this.lowerExpression(node.what) : undefined;
+    this.emit({
+      kind: KIND.THROW,
+      lhs1: thrown,
+      ...this.position(node),
+    });
   }
 
   /**
@@ -2601,6 +2622,21 @@ export class Translator {
         return this.lowerListExpression(node);
       case "nowdoc":
         return constOp(CONST.STRING, node.value ?? "");
+      case "throw": {
+        // A `throw` in an EXPRESSION position: PHP 8 allows it, and the expression never
+        // produces a value -- the exception leaves the function. So the THROW is emitted
+        // (with the exception's own construction, which is where a tainted value would
+        // ride in), and the value of the expression is unknown: the path is already gone,
+        // and whatever the caller does with the value cannot matter.
+        this.lowerThrow(node);
+        this.emitDrop(
+          "expr.throw.value",
+          "a throw used as an expression ends the evaluation, so the expression produces no value",
+          DROP_IMPACT.VALUE,
+          node,
+        );
+        return this.emitHavoc(node);
+      }
       case "exit": {
         // `exit` ends the execution unit: the TAC's way to say that is a
         // THROW.

@@ -62,6 +62,7 @@ import org.jetbrains.kotlin.psi.KtObjectLiteralExpression;
 import org.jetbrains.kotlin.psi.KtPostfixExpression;
 import org.jetbrains.kotlin.psi.KtPrefixExpression;
 import org.jetbrains.kotlin.psi.KtProperty;
+import org.jetbrains.kotlin.psi.KtPropertyDelegate;
 import org.jetbrains.kotlin.psi.KtReturnExpression;
 import org.jetbrains.kotlin.psi.KtSafeQualifiedExpression;
 import org.jetbrains.kotlin.psi.KtSimpleNameExpression;
@@ -814,6 +815,15 @@ final class KotlinTacTranslator {
     }
     KtExpression init = prop.getInitializer();
     if (init == null) {
+      // A DELEGATED property (`val x by delegate`) has no initializer, and its value comes
+      // from the delegate's `getValue` instead. The delegate itself is still evaluated when
+      // the property is created, so it is lowered -- and what it carries is not lost.
+      if (translateDelegate(prop)) {
+        TacOperand.TacVar v = new TacOperand.TacVar(tacName(name), TacType.UNKNOWN, false);
+        locals.put(name, v);
+        builder.addLocal(v);
+        return;
+      }
       // A declaration with no initializer (`var x: String`) has no value yet. The local
       // still exists, with an unknown type.
       TacOperand.TacVar v = new TacOperand.TacVar(tacName(name), TacType.UNKNOWN, false);
@@ -839,6 +849,49 @@ final class KotlinTacTranslator {
               .column(columnOf(prop))
               .build());
     }
+  }
+
+  /**
+   * Lowers a DELEGATED property's delegate: {@code val x by delegate}.
+   *
+   * <p><b>WHY THE DELEGATE IS LOWERED AT ALL.</b> A delegated property has no initializer: its
+   * value comes from the delegate's {@code getValue}, which the TAC does not call. But the DELEGATE
+   * EXPRESSION itself runs when the property is created, and it is usually a lambda -- {@code by
+   * lazy { ... }} -- whose body is user code. Before this, the whole delegate was skipped: the
+   * declaration produced no instruction at all, the lambda's body was never lowered, and every sink
+   * inside it was invisible to the analysis -- while the function still claimed {@code
+   * SOURCE_FULL}. A silent loss that the precision does not admit is the worst kind of loss,
+   * because nothing in the report says that anything is missing.
+   *
+   * <p><b>WHAT IS STILL LOST.</b> The property's VALUE: {@code getValue} runs at each READ, and the
+   * TAC has no call to make there, so the property holds no value. That is one lost value, not a
+   * lost meaning -- the function still runs the same statements -- so the loss is recorded as a
+   * VALUE drop and not as a SEMANTICS one. A delegated property is common enough -- {@code by lazy}
+   * is everywhere -- that grading every one of them SEMANTICS would empty the grade of its meaning.
+   *
+   * @param prop the property
+   * @return whether the property was a delegated one
+   */
+  private boolean translateDelegate(KtProperty prop) {
+    KtPropertyDelegate delegate = prop.getDelegate();
+    if (delegate == null) {
+      return false;
+    }
+    KtExpression expression = delegate.getExpression();
+    if (expression != null) {
+      // The delegate's own evaluation: the call that creates it, and the lambda that carries
+      // its body. The result of that call is NOT the property's value -- the property's value
+      // is what the delegate's `getValue` returns -- so the result is dropped on purpose.
+      translateExpression(expression);
+    }
+    reportDrop(
+        org.plumb.tac.ir.TacDrop.Impact.VALUE,
+        "kotlin.property.delegate",
+        "a delegated property's value comes from the delegate's getValue, which the TAC does not"
+            + " call, so the property holds no value here",
+        lineOf(prop),
+        columnOf(prop));
+    return true;
   }
 
   // ------------------------------------------------------------------
@@ -2423,7 +2476,14 @@ final class KotlinTacTranslator {
     for (KtProperty property : properties) {
       String propertyName = property.getName();
       KtExpression initializer = property.getInitializer();
-      if (propertyName == null || initializer == null || !property.isMember()) {
+      if (propertyName == null || !property.isMember()) {
+        continue;
+      }
+      if (initializer == null) {
+        // A DELEGATED property: the delegate is evaluated when the object is created, so it
+        // belongs to the constructor -- and the property's own value comes from the delegate's
+        // `getValue`, which the TAC does not call, so no field is written for it.
+        translateDelegate(property);
         continue;
       }
       if (isConstructorProperty(propertyName, valueParameters)) {
