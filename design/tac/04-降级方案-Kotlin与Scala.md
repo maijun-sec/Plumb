@@ -75,7 +75,7 @@
 | 嵌套类 / 局部类 / 匿名对象 | 各自合成类型（FQN 带外层类名或 `$local`/`$anon$N`）+`CONSTRUCTOR` | `METHOD`/`CONSTRUCTOR` | `classAnnotations` | `E` |
 | 扩展函数 / 扩展属性 | 接收者=**首个 TAC 形参**；`CALL <owner>.ext/1 args=[recv,...]`；属性读=合成 `GETTER` | `EXTENSION_FUNCTION`/`PROPERTY_ACCESSOR` | `methodAnnotations`/`fieldAnnotations` | `E`,`P` |
 | 挂起函数 | 状态机展开：按挂起点切段，每段一个合成函数；挂起点挂 `Effect.SUSPEND`；函数级 `resumePoints` | `METHOD` | — | `L` |
-| 内联函数 / `reified` | 声明侧同普通函数；**调用点做展开**（S8）；展开前 `TacDrop(SEMANTICS,"inline.notExpanded")`；`T::class`→`CLASS("java.lang.Class")`，类型实参被擦除⇒该值 `TacDrop(VALUE)` | `METHOD` | — | `X`（§13 的 `KS3`） |
+| 内联函数 / `reified` | 声明侧同普通函数；**调用点做展开**（S8）；**⚠ R21 已做（Kotlin 侧）**：同文件、top-level（或体不读 `this`）、参数可一一绑定的 `inline` **真展开** —— 体的指令落在**调用方**的流里，函数类型实参的 lambda 在**参数被调用的位置**内联 ⇒ ⇒ **非局部返回因此正确**（**引擎侧没有跨函数返回边这种表示** ⇒ ⇒ 「代码待在同一个函数里」是唯一正确的表达）；**不能展开的**（成员 / 跨文件 / 库内 / 参数绑不上）记 `TacDrop("inline.notExpanded")`，**档位按丢掉的副本定**（体里有 `return`/`throw`/循环，或实参里的 lambda 有 `return` ⇒ `SEMANTICS`；其余 ⇒ `VALUE`）；`T::class`→`CLASS("java.lang.Class")`，类型实参被擦除⇒该值 `TacDrop(VALUE)` | `METHOD` | — | `X`（§13 的 `KS3`） |
 | 尾递归 | 标注即可；TAC 的 `JUMP` 回边就是尾递归形态 | `METHOD` | — | `X` |
 | 操作符重载/中缀 | `OPERATOR`；调用点 `CALL <owner>.plus/2`（现状是 `BINOP`，`KTT:1759-1778`） | `OPERATOR` | — | `E`,`P` |
 | 局部函数 | 合成函数，名字=`<enclosing>.<name>$local`；调用点用**同一名字**（现状两边不一致⇒调用图边指向不存在的函数） | `METHOD` | — | `X` |
@@ -95,7 +95,7 @@
 | opaque type / 类型别名 | 无运行期效果⇒`TacDrop(STRUCTURE)`；别名关系记 `TacTypeDecl` | — | — | `B` |
 | `given` | 合成 `FIELD_INITIALIZER` 返回该值；`summon[T]`→`CALL <given>`；隐式实参在调用点解析后**显式传参** | `FIELD_INITIALIZER` | — | `E`,`P` |
 | 扩展方法 | 接收者=首个 TAC 形参 | `EXTENSION_FUNCTION` | — | `E`,`P` |
-| `inline`/`transparent inline`/`inline match` | 同 Kotlin（展开=S8） | `METHOD` | — | `X` |
+| `inline`/`transparent inline`/`inline match` | **⚠ R21：Scala 侧只做记账，不做展开** —— 插件的相位（`typer` 之后）在 dotc 的 inliner **之前** ⇒ ⇒ 插件读到的是**调用**，不是**编译器展开后的副本** ⇒ ⇒ ⇒ 所以记 `TacDrop("inline.notExpanded", SEMANTICS)`；而 **Scala 3 已经不支持非局部返回**（编译器会警告：「Non local returns are no longer supported; use `boundary` and `boundary.break` in `scala.util` instead」）⇒ ⇒ ⇒ 而 **by-name 参数的体本来就在调用方的流里** ⇒ ⇒ ⇒ **⇒ 所以这一侧缺的只是「副本」，不是「非局部返回」** | `METHOD` | — | `X` |
 | 字段初始化器（类体里的 `val x = expr`） | `FIELD_INITIALIZER`（体=`MOVE`+`FIELDSTORE ownerType`），在构造器里调用 | `FIELD_INITIALIZER` | `fieldAnnotations` | `E` |
 | `lazy val` | 同上+合成 `GETTER`（惰性初始化 `BRANCH`+持有者字段） | `GETTER` | — | `E` |
 | 枚举 case 值 | 同枚举条目 | `ENUM_ENTRY` | — | `IR-AB` |
@@ -437,7 +437,7 @@ IR v2 之外需要 **4 条**新能力，全部是「加字段」或「枚举末�
 | --- | --- | --- | --- | --- | --- |
 | KS1 | C | **一等函数值与高阶调用的回调绑定**（Kotlin `::f`、把方法当值传；Scala eta-expansion `f _`、部分函数、作为值的占位符） | TAC 的 `CALL` 是**静态绑定**的：函数值没有运行期表示，被调方在运行期才决定调用哪个函数、传什么实参。前端**可识别**的高阶操作已展开成显式循环（§6.7、§8.2.5），**不可识别**的无法确定回调实参 | `CALL`+`UNINTERPRETED`（污点屏障）+`TacDrop(VALUE)`；回调形参按未知处理 | 回调体里的污点在未识别的高阶调用处断链（漏报）；不产生误报 |
 | KS2 | B | **协程的恢复顺序与线程交错**（`launch`/`async`/`await`/`Flow`） | 由运行期调度器与硬件决定，源码里没有这个事实（`02` §3.2）。**但协程的本体已完整降级**（状态机展开：按挂起点切段，每段一个合成函数；挂起点挂 `Effect.SUSPEND`；函数级 `resumePoints`）⇒ 缺的只是「谁在何时恢复」这一个**运行期才定的事实** | 挂起点 `Effect.SUSPEND`+恢复点（`L`）+`Effect.CONCURRENT`；跨挂起点的数据流按「任意挂起点可能到达」合并 | 并发类规则报「**可能**发生」而非「发生了」；跨挂起点的数据流被过近似 |
-| KS3 | C | **`inline` 展开后的非局部返回与类型实参特化**（Kotlin `inline`/`reified`；Scala `inline`/`transparent inline`） | 展开是编译期产物：源码里没有展开后的控制流；`return` 在内联 lambda 里返回的是**内联函数**而非 lambda，不展开就无法表达这个返回目标 | 展开落地前：调用点按普通 `CALL` 处理+`TacDrop(SEMANTICS)`；`reified` 的类型实参丢失处记 `VALUE` drop | 早退路径的污点可能被误判。**可由 S8 的展开工作消除**，属工作量而非能力缺口 |
+| KS3 | C | **`inline` 展开后的非局部返回与类型实参特化**（Kotlin `inline`/`reified`；Scala `inline`/`transparent inline`） | 展开是编译期产物：源码里没有展开后的控制流；`return` 在内联 lambda 里返回的是**内联函数**而非 lambda，不展开就无法表达这个返回目标 | 展开落地前：调用点按普通 `CALL` 处理+`TacDrop(SEMANTICS)`；`reified` 的类型实参丢失处记 `VALUE` drop。**⚠ R21 已做（Kotlin 侧真展开；Scala 侧只做记账）**，且 Kotlin 侧的**档位改为按「丢掉的副本带走了什么」定**（见 `13` §6 Q-1 的「R21 的偏离」） | 早退路径的污点可能被误判。**可由 S8 的展开工作消除**（**Kotlin 侧已消**），属工作量而非能力缺口 |
 | KS4 | C | **Scala 编译期宏** | 宏的展开体不在源码树里（展开发生在前端所处阶段之后），运行期效果由宏实现决定，静态不可知 | `CALL`+`UNINTERPRETED`+`TacDrop(VALUE)` | 宏生成的代码不被分析 |
 | KS5 | 已覆盖 | **Kotlin 智能转换的「类型收窄」**（非空性部分除外） | `TacType` 是**静态**类型，今天没有流敏感的收窄表示。`is` 检查后的**非空性**收窄由 `NULL_CHECK` **完整**表达（IR 既有）；但「这个值现在是 `String` 而不是 `Any`」需要**分支内类型改写** | **IR-Z 落地后完整支持**：`BRANCH` 带 `Map<String,TacType> narrowedTypes`（`05` §IR-Z 的形状，TS/ArkTS 的 `if (x is Y)` 走同一条）⇒ Kotlin 的 `if (x is String) { x.length }` 里的 `x` 被改写成 `STRING`。**IR-Z 未落地时**才退回：保留声明类型+`TacDrop(STRUCTURE)` | IR-Z 落地：依赖收窄类型的规则（如「只有 String 才有 length」）**正常触发**；未落地：这些点上不触发（不误报也不漏报地「不知道」） |
 | KS6 | C | **结构类型与反射式成员访问**（Scala `{ def f: Int }`、反射、动态成员查找） | 成员是否存在、值是什么，取决于运行期对象状态与注册表；源码里没有这个事实（`02` §3.1） | `CALL`+`UNINTERPRETED`；结果按**未知**处理（既不当干净、也不当污点源） | 依赖该结果的规则**不出结论** |
@@ -452,7 +452,7 @@ IR v2 之外需要 **4 条**新能力，全部是「加字段」或「枚举末�
 1. **IR v2 尚未落地**：全仓库 grep，`SOURCE_DEGRADED`/`TacDrop`/`TacGuard`/`TacValueDomain`/`TacMemberKind`/`TacTypeDecl`/`TacLabelRef`/`TacBranchRegion` **一个都不存在**⇒本方案的前置是 IR v2 先落地；§10 的 4 条同样未落地。
 2. **IR-P 的 owner 规范会改动调用图键**⇒已有规则集与签名目录要同步；跨语言边界的边会一次性变化（已有 finding 数量随之变）。
 3. **高阶操作展开是前端最重的一块**（集合操作×语言×变体）。建议顺序：先做「迭代协议+`for`」与「`map`/`filter`/`forEach`」六项；做完再评估是否需要「回调实参标注」这类 IR 能力（本文未提，它只服务于不可识别的高阶调用，而那部分已归入 §13 的 `KS1`）。
-4. **`inline` 展开（S8）的工作量被低估**：它要求前端在 dotc 的 inliner 之后运行，或自己实现展开器。
+4. **`inline` 展开（S8）的工作量被低估**：它要求前端在 dotc 的 inliner 之后运行，或自己实现展开器。**⇒ ⚠ R21 的实测把它拆成了两半**：**Kotlin 侧不需要在 inliner 之后运行** —— 它**自己**做那个展开（在**自己**的树上），而**Scala 侧做不到**：dotc 的 inliner 是**编译器**的相位，插件的相位在它**之前** ⇒ ⇒ ⇒ 所以 Scala 侧只能**记账**（而 Scala 3 又**已经不支持**非局部返回 ⇒ ⇒ ⇒ 那一侧真正缺的只是「副本」）。
 5. **Kotlin 补注册 `this` 会改变既有 TAC 形状**：属性读从「没有定义指令的临时量」变成 `FIELDLOAD`⇒此前被静默丢弃的字段污点会开始流动⇒**finding 数量会跳变**，属预期而非回归。
 6. **Scala 的 holder cell 改用 `ownerType`**⇒需要引擎侧字段追踪按 owner 分桶（`01` §IR-E 的生产消费方之一）⇒迁移期必须保证新旧两条路径给出同样的结果。
 7. **未决**：`TacBinding.path` 的取值格式（`"$1"` vs `"_1"` vs 字段名）要与引擎侧的解构规则一致；`ParamOption` 是否真的需要（跨模块场景）取决于模块边界的最终定义；Kotlin `expect`/`actual` 的合并规则（同一限定名两个函数⇒合并成一个）会改变合并程序的键，须与 IR-P 的 owner 规范一起定。
@@ -489,7 +489,7 @@ IR v2 之外需要 **4 条**新能力，全部是「加字段」或「枚举末�
 | A-09 | companion object | DROPPED-SILENT | `KTF:501-507` | §4.1「伴生对象」行（成员 `enclosingClass`=**外层类 FQN**；`Holder.make()`→`CALL <外层类>.make/0`）+ §10 IR-P 细则表「伴生对象 owner」行 |
 | A-10 | extension function | DEGRADED | `KTT:1613-1620`, `KTT:1641-1667` | §4.1「扩展函数 / 扩展属性」行（接收者=**首个 TAC 形参**；`CALL <owner>.ext/1 args=[recv,...]`）+ §10 IR-P 细则表「顶层函数/扩展函数的 owner」行 |
 | A-11 | extension property | DROPPED-SILENT | `KTF:455-507` | §4.1「扩展函数 / 扩展属性」行（属性读=合成 `GETTER`）+ §10 IR-P 细则表「顶层函数/扩展函数的 owner」行 |
-| A-12 | inline function | DEGRADED | `KTF:722-851` | §4.1「内联函数 / `reified`」行（声明侧同普通函数；**调用点做展开**（S8）；展开前 `TacDrop(SEMANTICS,"inline.notExpanded")`）+ §13 的 `KS3` |
+| A-12 | inline function | DEGRADED | `KTF:722-851` | §4.1「内联函数 / `reified`」行（声明侧同普通函数；**调用点做展开**（S8）；展开前 `TacDrop(SEMANTICS,"inline.notExpanded")`）+ §13 的 `KS3`。**⚠ R21 已做（Kotlin 侧真展开）**：同文件、top-level（或体不读 `this`）、参数可一一绑定的 `inline` ⇒ ⇒ **零回执、`SOURCE_FULL`**，且**非局部返回正确**；**不能展开的**仍有回执（**档位按丢掉的副本定**） |
 | A-13 | infix function (declaration) | KEPT | `KTF:501-507` | 保持现状（无需改动）—— §4.1「操作符重载/中缀」行（`memberKind=OPERATOR`） |
 | Kotlin #22 | infix call site (`a pow2 b`) | DROPPED-NOTED | `KTT:1186-1199` | §5.1「中缀 `a pow2 b` / 用户类型 `a + b`」行（`CALL <owner>.pow2/2`）+ §4.1「操作符重载/中缀」行 + §10 IR-P 细则 |
 | A-14 | operator function (declaration) | KEPT | `KTF:501-507` | 保持现状（无需改动）—— §4.1「操作符重载/中缀」行 |
@@ -606,7 +606,7 @@ IR v2 之外需要 **4 条**新能力，全部是「加字段」或「枚举末�
 | A-05 | `@RequiresOptIn` | DROPPED-SILENT | no annotation reading at all | §7 类型面方案「**不进运行期 IR 的类型信息**」第 ④ 条（**编译期契约/opt-in**（Kotlin `contracts`、`@RequiresOptIn`）——编译期约束⇒`TacDrop(STRUCTURE)`）+ §9 注解与元数据方案 |
 | Kotlin #11 | default arguments | DROPPED-SILENT | `KTT:1457`, `KTT:1613-1620` | §10 `IR-AC`（已并入 `IR-AO`）+ §11 改动清单「`calleeSignature`（`KTT:1613`）\| …默认参数填 `d$default$N`」 |
 | A-06 | data class generated members | DEGRADED | `KTF:525-597` | §4.1「数据类」行（合成成员改为**真实体**）+ §11 改动清单「`translateGeneratedMembers`（`KTF:525-597`）」 |
-| A-07 | `inline` / `reified` | DEGRADED | `KTT:764-821` | §4.1「内联函数 / `reified`」行 + §13 的 `KS3`（`inline` 展开是编译期产物 ⇒ 不展开就无法表达非局部返回；**可由 S8 的展开工作消除**） |
+| A-07 | `inline` / `reified` | DEGRADED | `KTT:764-821` | §4.1「内联函数 / `reified`」行 + §13 的 `KS3`（`inline` 展开是编译期产物 ⇒ 不展开就无法表达非局部返回；**可由 S8 的展开工作消除**）。**⚠ R21 已做（Kotlin 侧真展开）** —— 而 `reified` 的**类型实参擦除**仍是一条 `VALUE` drop（那条**消不掉**：副本不是泛型的） |
 | A-08 | value classes | DROPPED-SILENT | `KTF:455-507` | §4.1「值类」行（运行期表示=被包装类型）+ §11 改动清单 + §12 门禁 D1 |
 | A-10 | context receivers | **NOT FOUND** | — | 同附录 A.1 的「A-53 context receivers」行（**同一个构念在审计里被登记了两次**：一次在声明面 A.1、一次在类型系统面 A.5）⇒ §4.1「**上下文接收者**」行 + §11 改动清单「`translateFunction`（`KTF:722-851`）…上下文接收者」行 |
 | Kotlin #29 | expect / actual | DEGRADED | `KTT:256-262` | §11 改动清单「`translateGeneratedMembers`（`KTF:525-597`）、`translateFunction`（`KTF:722-851`）\| …`expect`/`actual` 合并」+ §14 风险 7 |
@@ -677,9 +677,9 @@ IR v2 之外需要 **4 条**新能力，全部是「加字段」或「枚举末�
 | A-21 | opaque type aliases | DROPPED-NOTED | `plumb-frontend/src/main/java/org/plumb/tac/frontend/scala/ScalaTacTranslator.java:1030-1037` | §4.2「opaque type / 类型别名」行（无运行期效果⇒`TacDrop(STRUCTURE)`；别名关系记 `TacTypeDecl`） |
 | A-22 | export clauses | KEPT | `plumb-frontend/src/main/java/org/plumb/tac/frontend/scala/ScalaTacTranslator.java:1296-1322` | 保持现状（无需改动）—— dotc 自己把 `export` 展开成转发方法 ⇒ 那条转发方法走 §4.2「类 / trait」行的普通成员路径 |
 | Scala #B16 | `given` (Scala 3) | DROPPED-SILENT | `plumb-frontend/src/main/java/org/plumb/tac/frontend/scala/ScalaTacTranslator.java:309-324` | §4.2「`given`」行（合成 `FIELD_INITIALIZER` 返回该值；`summon[T]`→`CALL <given>`；隐式实参在调用点解析后**显式传参**）+ §11 改动清单「`collectDefs`…追加 **Template 级 `ValDef`**⇒…`given`…」 |
-| A-23 | inline defs | DEGRADED | `plumb-frontend/src/main/java/org/plumb/tac/frontend/scala/ScalaTacTranslator.java:1296-1322` | §4.2「`inline`/`transparent inline`/`inline match`」行（同 Kotlin：展开=S8）+ §13 的 `KS3`（`inline` 展开是编译期产物 ⇒ 不展开就无法表达非局部返回） |
+| A-23 | inline defs | DEGRADED | `plumb-frontend/src/main/java/org/plumb/tac/frontend/scala/ScalaTacTranslator.java:1296-1322` | §4.2「`inline`/`transparent inline`/`inline match`」行（同 Kotlin：展开=S8）+ §13 的 `KS3`（`inline` 展开是编译期产物 ⇒ 不展开就无法表达非局部返回）。**⚠ R21 已做，但只做记账**：插件的相位在 dotc 的 inliner **之前** ⇒ ⇒ ⇒ 看不到编译器展开后的副本 ⇒ ⇒ ⇒ 记 `TacDrop("inline.notExpanded", SEMANTICS)` |
 | A-25 | erased value types | NOT FOUND | no handling code between `plumb-frontend/src/main/java/org/plumb/tac/frontend/scala/ScalaTacTranslator.java:955-1038` | §7 类型面方案「**不进运行期 IR 的类型信息**」第 ⑥ 条（**擦除标记**——`erasedValue[T]` 只是**给编译器看**的类型标记，运行期既无值也无类型⇒`TacDrop(STRUCTURE)`）+ §11 改动清单「`translateExpr`（`ST:955-1038`）」行。**审计标 NOT FOUND** ⇒ 现有实现**完全没有**这个构念 ⇒ 本方案按「编译期标记」处理（**不新造 IR**） |
-| A-26 | `transparent inline` | NOT FOUND | no handling code between `plumb-frontend/src/main/java/org/plumb/tac/frontend/scala/ScalaTacTranslator.java:955-1038` | §4.2「`inline`/`transparent inline`/`inline match`」行（同 Kotlin：展开=S8）+ §13 的 `KS3`（`inline` 展开是编译期产物 ⇒ 不展开就无法表达非局部返回）+ §7 类型面方案第 ⑥ 条（`transparent inline` 本身只是**擦除标记**⇒`STRUCTURE` drop）。**审计标 NOT FOUND** ⇒ 现有实现**完全没有**这个构念 ⇒ 本方案**新增支持** |
+| A-26 | `transparent inline` | NOT FOUND | no handling code between `plumb-frontend/src/main/java/org/plumb/tac/frontend/scala/ScalaTacTranslator.java:955-1038` | §4.2「`inline`/`transparent inline`/`inline match`」行（同 Kotlin：展开=S8）+ §13 的 `KS3`（`inline` 展开是编译期产物 ⇒ 不展开就无法表达非局部返回）+ §7 类型面方案第 ⑥ 条（`transparent inline` 本身只是**擦除标记**⇒`STRUCTURE` drop）。**审计标 NOT FOUND** ⇒ 现有实现**完全没有**这个构念 ⇒ 本方案**新增支持**。**⚠ R21 已做**：Scala 侧按 `Flags.Inline()` 认出 `inline def` **与** `transparent inline` ⇒ ⇒ 两者**共用同一条回执**（`inline.notExpanded` / `SEMANTICS`） |
 
 ### A.2 Expressions
 
@@ -741,7 +741,7 @@ IR v2 之外需要 **4 条**新能力，全部是「加字段」或「枚举末�
 | A-35 | `to` / `until` ranges | KEPT | `plumb-frontend/src/main/java/org/plumb/tac/frontend/scala/ScalaTacTranslator.java:1296-1322` | 保持现状（无需改动）—— §5.2「范围 `to`/`until`」行（普通 `CALL`） |
 | Scala #B5 | using clauses | DROPPED-SILENT | `plumb-frontend/src/main/java/org/plumb/tac/frontend/scala/ScalaTacTranslator.java:423-438` | §4.2「多参数表/`implicit`/`using`」行 + §11 改动清单「`buildParams`…`implicit`/`using` 解析后显式化」 |
 | A-36 | `@targetName` | DROPPED-SILENT | no `Annotation` call under `plumb-frontend/src/main/java/org/plumb/tac/frontend/scala/` | §9 注解与元数据方案（`@targetName` 影响调用名⇒调用点的 `calleeSig` 必须用改名后的名字）+ §4.2 声明面表的注解通道列 |
-| A-37 | `inline` + `erasedValue` | DEGRADED / NOT FOUND | `plumb-frontend/src/main/java/org/plumb/tac/frontend/scala/ScalaTacTranslator.java:1296-1322` (`inline`); `erasedValue` — no handling code | §4.2「`inline`/`transparent inline`/`inline match`」行（展开=S8）+ §13 的 `KS3` |
+| A-37 | `inline` + `erasedValue` | DEGRADED / NOT FOUND | `plumb-frontend/src/main/java/org/plumb/tac/frontend/scala/ScalaTacTranslator.java:1296-1322` (`inline`); `erasedValue` — no handling code | §4.2「`inline`/`transparent inline`/`inline match`」行（展开=S8）+ §13 的 `KS3`。**⚠ R21 已做**：`inline` 那一半记 `inline.notExpanded` / `SEMANTICS`（Scala 侧只做记账）；`erasedValue` 那一半**仍然没有**（它只是**给编译器看**的类型标记 ⇒ §7 类型面方案第 ⑥ 条的 `STRUCTURE` drop 那一档） |
 | A-38 | `summon` | DROPPED-NOTED | `plumb-frontend/src/main/java/org/plumb/tac/frontend/scala/ScalaTacTranslator.java:1030-1037` | §4.2「`given`」行（`summon[T]`→`CALL <given>`） |
 | A-39 | `identity` | KEPT | `plumb-frontend/src/main/java/org/plumb/tac/frontend/scala/ScalaTacTranslator.java:1296-1322` | 保持现状（无需改动）—— §5.2「范围」等同族的普通 `CALL` |
 | A-43 | `scala.compiletime` | NOT FOUND | no handling code between `plumb-frontend/src/main/java/org/plumb/tac/frontend/scala/ScalaTacTranslator.java:955-1038` | §7 类型面方案「**不进运行期 IR 的类型信息**」第 ⑦ 条（**编译期常量**（Scala `scala.compiletime`）——值只在编译期存在，运行期没有这个值⇒该表达式记 `drop(VALUE, "compiletime.constant")`，**类型**照常进 `TacType`）+ §11 改动清单「`translateExpr`（`ST:955-1038`）」行。**审计标 NOT FOUND** ⇒ 现有实现**完全没有**这个构念 ⇒ 本方案**新增支持**（不新造 IR） |
