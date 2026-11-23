@@ -67,7 +67,7 @@
 | 类型别名 | **无运行期效果⇒不产生函数**；`TacDrop(STRUCTURE,"typealias")`→`programDrops` | — | — | `B` |
 | 顶层 `val`/`var` | 合成 `FIELD_INITIALIZER`（体=`MOVE`+`FIELDSTORE ownerType=<文件级 holder>`）；读=`CALL` 该函数 | `FIELD_INITIALIZER` | `fieldAnnotations` | `E` |
 | 类属性 `val`/`var` 与自定义 getter/setter | backing field=`FIELDLOAD`/`FIELDSTORE`（带 `ownerType`）；访问=合成 getter/setter（自定义访问器的体=用户代码）；`val` 无 setter | `GETTER`/`SETTER` | `fieldAnnotations`/`methodAnnotations` | `E` |
-| 委托属性 `by lazy`/`by Delegates.observable` | 读=`CALL <delegate>.getValue(this,prop)`；写=`CALL <delegate>.setValue(this,prop,v)` | `PROPERTY_ACCESSOR` | `fieldAnnotations` | `E` |
+| 委托属性 `by lazy`/`by Delegates.observable` | 读=`CALL <delegate>.getValue(this,prop)`；写=`CALL <delegate>.setValue(this,prop,v)`。**⚠ R21 部分落地**（`14` §3.43.5）：**委托表达式本身被降级**（委托的构造 + 它的 lambda 体在 TAC 里 ⇒ ⇒ 体里的 sink 可见），但 **`getValue` 不被调用** ⇒ ⇒ 属性的值是**未知**（回执 `kotlin.property.delegate`，档位 `VALUE`） | `PROPERTY_ACCESSOR` | `fieldAnnotations` | `E` |
 | `lateinit` | backing field+合成布尔字段 `<p>$init`；读前 `BRANCH` 检查，未初始化则 `THROW ctorType=kotlin.UninitializedPropertyAccessException`（`IR/TacInstruction.java:100-102` 禁止映射成 `NULL_CHECK`） | `GETTER` | — | `E`,`J` |
 | `const val` | 编译期常量⇒**使用点直接内联常量**；`TacDrop(STRUCTURE,"const.inlined")` | — | — | `B` |
 | `init` 块 | 构造器体内的一段 `FIELDSTORE` 序列（参数赋值之后） | `FIELD_INITIALIZER` | — | `E` |
