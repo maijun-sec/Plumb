@@ -179,6 +179,11 @@ Python 侧车的解析器**跟着解释器走**（`PY/plumb_translator.py:34`）
 ⇒ 属性读写**继续用 `ARRAYLOAD`/`ARRAYSTORE`**（P9），并附 `ownerType` 标注（`IR-AP`）。
 **分界线（Python）**：同上（`PY/plumb_translator.py:13-18`），但 Python 还要额外区分
 **类属性**（类体里的赋值）与**实例属性**（`self.x = ...`）⇒ 靠 `ownerType` 区分。
+**⇒ 而 R21 的 B3 又加了一条分界线**（`14` §3.41）：**作用域**与**属性**是两件事 ——
+属性是**某个对象**的命名空间里的一个键（`ARRAYLOAD`/`ARRAYSTORE`），而作用域是
+**跨函数活着的一个位置**（模块的、类的、某个函数的）⇒ 作用域里的名字**不是**属性，
+它落在**类的那个机制**上（`FIELDLOAD`/`FIELDSTORE`，接收者是一个合成的作用域所有者），
+因为引擎的**跨函数字段污点表**正是「一个跨函数活着的可变位置」这件事已有的实现。
 
 ### 4.1 PHP 声明面总表
 
@@ -251,7 +256,7 @@ Python 侧车的解析器**跟着解释器走**（`PY/plumb_translator.py:34`）
 | 属性（setter） | `ast.FunctionDef` + 装饰器 `ast.Attribute(value=Name("x"), attr="setter")` | 写 `obj.v = x` ⇒ `CALL <Owner>.v/1` | `SETTER` | `IR v2 §IR-E` |
 | 属性（deleter） | 同上，`attr="deleter"` | `del obj.v` ⇒ `CALL <Owner>.v/1` | `SETTER`（`IR-AP` 增 `DELETER`） | `IR-AP` |
 | 实例属性 | `ast.Assign`，目标是 `ast.Attribute(value=Name("self"), attr="x")` | `ARRAYSTORE self["x"]`，`ownerType` = 类名 | — | `IR-AP` |
-| 类属性 | `ast.Assign`，目标是 `ast.Name` 且出现在 `ast.ClassDef.body` | `ARRAYSTORE t_cls_C["x"]`（receiver = 类对象） | `FIELD_INITIALIZER` | `IR-AP` |
+| 类属性 | `ast.Assign`，目标是 `ast.Name` 且出现在 `ast.ClassDef.body` | **作用域槽**：`FIELDSTORE Scope_class_<模块>.<类>["x"]` 的等价物 —— 接收者是**类的作用域所有者**（`FIELDSTORE`，`fieldName` = 名字）⇒ **R21 的 B3 改的**（`14` §3.41）：原来是 `ARRAYSTORE t_cls_C["x"]`，而它**跨不过方法** | `FIELD_INITIALIZER` | `IR-AP`（B3 用的是**既有** IR，没有新增） |
 | `__slots__` | `ast.Assign`，目标是 `ast.Name("__slots__")` | 运行期无行为 ⇒ 零指令；名字进 `TacTypeDecl.fields` | — | `IR v2 §IR-E` |
 | `__all__` | `ast.Assign`，目标是 `ast.Name("__all__")` | 同上 | — | 现有 IR 即可 |
 | `@dataclass` | `ast.ClassDef.decorator_list` 里的 `ast.Name("dataclass")` | **解析器不区分 `dataclass` 与别的装饰器** ⇒ 靠名字判定 ⇒ 合成 `__init__`：`FIELDSTORE` 每个字段 = 形参 | `CONSTRUCTOR` | `IR v2 §IR-E` |
@@ -1192,12 +1197,23 @@ private final String aliasOf;   // 这个位置与哪个变量是同一个位置
 
 - **为什么现有 IR 不够**：TAC 的位置只有两种（`TacVar` 与「容器项」），
   **没有「两个位置是同一个」的概念** ⇒ 按引用与 `global` 都无法表达。
+- **⇒ ⚠ R21 的 B3 把这一条**部分**兑现了**（`14` §3.41）：**Python 侧**没有加 IR ——
+  **作用域槽**用的是**既有**的 `FIELDLOAD`/`FIELDSTORE` + 一个合成的作用域所有者，
+  而引擎的**跨函数字段污点表**（`TaintedCheckerBase.crossFnClassFieldTaint`，键 = `<类>.<字段>`）
+  **本来就是「一个跨函数活着的可变位置」这件事已有的实现** ⇒ ⇒ **所以这条提案对 Python 已不再是前置**；
+  **PHP 侧仍未兑现**（`global $x` 的写还是进函数自己的局部）。
+  **⇒ 而本节「生产消费方」写的那条通道**（按 `scopeBindings` 把 `global` 写路由到模块作用域的位置）
+  **在仓库里零命中**（`plumb-dfa` / `plumb-main` / `plumb-tac` 的 `src/main` 都搜不到 `scopeBindings`）——
+  这条通道**存在但没有人消费**，所以它**不能**被当成「已经有的能力」。
 - **数据流友好性**：这是**跨函数污点**在 PHP / Python 里最常见的断点：
   `global G; G = cmd` 现在写进**函数自己的局部**（审计 S9），
   脏数据永远到不了读它的另一个函数。
+  **⇒ R21 的 B3 已修好 Python 那一半**（`14` §3.41）：端到端实测，模块级写 / `global` 写 /
+  类属性 / `nonlocal` 写**四种形状**从 **0 条**变成 **各 1 条**，而四条反向对照**仍然是 0 条**。
 - **Z3 友好性**：无直接影响。
 - **生产消费方**：`DFA/taint/TaintedCheckerBase.java` 的 per-function 变量表与模块级变量表
   （按 `scopeBindings` 把 `global` 写路由到模块作用域的位置）。
+  **⇒ 而 Python 侧现在走的是另一条消费方**：`crossFnClassFieldTaint` + `classFieldKey`（`14` §3.41）。
 - **序列化影响**：末尾追加 ⇒ 兼容。
 
 ### 8.3 补充提案与既有提案的合并说明
@@ -1350,6 +1366,7 @@ private final String aliasOf;   // 这个位置与哪个变量是同一个位置
 | 同上 | `lower_lambda`（`:632-674`） | 闭包对象形状（§5.3），不再把捕获提成形参 | `IR-P` |
 | 同上 | `resolve_method`（`:2178-2211`）/ `resolve_free_function`（`:2096-2176`） | 按 `(类, 方法)` 查 arity（§4.4）；owner 未知不许用占位符（`IR-P`） | `IR-P` |
 | 同上 | `collect_declared_globals`（`:604-613`） | 补 `ast.Nonlocal` | `IR-AS` |
+| 同上 | **R21 的 B3 已加**：`collect_scope_slots` / `read_function_slots` / `read_class_slots` / `promote_cells` / `declared_scopes` / `scope_owner` / `write_slot` / `read_slot` / `slot_of` | **多级作用域槽**：模块 / 类 / 函数三层的作用域，各自有**身份**；作用域里的名字落成**合成所有者上的 `FIELDLOAD`/`FIELDSTORE`**（`14` §3.41）⇒ ⇒ **没有新 IR** | **既有 IR**（`FIELDLOAD`/`FIELDSTORE` + `CLASS` 类型的接收者） |
 | 同上 | `collect_loaded_names`（`:546-593`） | `decorator_list`（`:560`、`:571`）与 `bases`（`:572`）**不再算作外层作用域的「被读名字」**（否则它们会被提升成外层函数的捕获形参 ⇒ 污染签名与污点源） | `IR-AO` |
 | 同上 | `walk_bindings`（`:350-386`） | `ast.ImportFrom` 读 `node.level` | 现有 IR 即可 |
 | 同上 | `lower_construction`（`:1999-2045`） | `calleeSig` = `<Class>.<init>/n`（去掉 `<unknown>.` 前缀） | `IR-P` |
@@ -1458,7 +1475,7 @@ private final String aliasOf;   // 这个位置与哪个变量是同一个位置
 | `class C(Base):` | `Base` 进 `TacTypeDecl.superType` | — |
 | `@dataclass class C:` | 装饰器被降级 + 合成的 `__init__` | — |
 | `@app.route("/x")` | 装饰器名 `route` 出现在**某个 callee key** 里 | — |
-| `def f(): ...` 的 `nonlocal g` | `g` 写进**外层**的位置 | — |
+| `def f(): ...` 的 `nonlocal g` | `g` 写进**外层**的位置（**R21 的 B3 已做**：写进的是**外层函数的作用域槽**，端到端实测能报出来 —— `14` §3.41） | — |
 | 任何函数 | `returnType` 键存在且非 `UNKNOWN`（除非声明就是 `Any`） | — |
 
 ### 11.3 门禁 A / B / C 的具体化

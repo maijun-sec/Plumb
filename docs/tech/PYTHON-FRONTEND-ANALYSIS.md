@@ -82,6 +82,18 @@ field is not what an attribute is.
 attribute assignment is an `ARRAYSTORE` with the attribute's name as the key,
 so that a later read of the same attribute finds the value that was written.
 
+**A scope is not an object either.** A name that lives in a scope -- the
+module's own names, a class body's names, the names a nested function writes
+by `nonlocal` -- outlives the function that writes it, so its value cannot be
+a local. The TAC has no scope of its own, so a scope's slot is a `FIELDLOAD` or
+a `FIELDSTORE` on a synthetic owner: the owner stands for the scope, its type
+carries the scope's identity (so two modules with a global of the same name are
+two slots, and a module's scope and a class's scope are two scopes), and its
+name starts with an upper-case letter (the engine records a field write at the
+class level only when the receiver looks like a class name). That is the
+**cross-function field tracker** the engine already has, and it is what carries
+a value from the function that wrote it to the function that reads it.
+
 ### 2.2 The receiver slot is reserved
 
 The TAC's call convention reserves `args[0]` for the receiver, and the real
