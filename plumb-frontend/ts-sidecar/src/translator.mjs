@@ -121,6 +121,7 @@ import {
   isNoSubstitutionTemplateLiteral,
   isTypeAliasDeclaration,
   isTypeOfExpression,
+  isYieldExpression,
   SyntaxKind,
 } from "typescript/unstable/ast";
 
@@ -2802,6 +2803,9 @@ export class Translator {
       );
       return value;
     }
+    if (isYieldExpression(node)) {
+      return this.lowerYield(node);
+    }
     if (isTypeOfExpression(node)) {
       const value = this.lowerExpression(node.expression);
       this.emitDrop(
@@ -3387,6 +3391,79 @@ export class Translator {
       ...this.position(node),
     });
     return dest;
+  }
+
+  /**
+   * A `yield`: the generator's suspension point.
+   *
+   * <p><b>WHY THE OPERAND IS EVALUATED HERE.</b> The value a generator yields is
+   * evaluated in the generator's own stream: it is user code, and a sink inside it is a
+   * sink inside the generator. Before this, the expression switch had no case for a
+   * yield, so the whole expression fell through to the fallback -- which reported it as
+   * a construct with no lowering and made the value unknown. The operand was never
+   * visited at all, so every sink under a yield was invisible, and the function said
+   * only that it had been lowered partially. The sink was not merely missed: it was
+   * never looked for.
+   *
+   * <p><b>WHY THE OPERAND'S VALUE IS NOT KEPT.</b> The value a generator produces is
+   * handed to a DRIVER -- whoever calls `next()` on it -- and the TAC has no driver:
+   * there is no generator object, no state machine that says where the generator
+   * resumes, and no `next()` that reads what the generator produced. Writing the value
+   * into a local of the generator's own would say something the source does not say
+   * (the source has no such variable) and would reach nobody: the reader that matters
+   * is the driver, and the driver is not in the TAC. So the operand is evaluated for
+   * what it DOES -- its calls, its writes, its sinks -- and its value is left alone.
+   *
+   * <p><b>WHAT IS STILL LOST, AND WHERE IT IS RECORDED.</b> Two things, and they are
+   * different in kind. The generator's PROTOCOL is lost: the body is one stream, the
+   * values it produces do not reach a driver, and who resumes it and when is not
+   * expressed -- that is the semantics, so it is recorded as a SEMANTICS drop. The
+   * value the yield EXPRESSION produces is lost too: for a plain yield it is what the
+   * driver sends back into the generator, and for a delegated yield it is the
+   * delegated generator's return value -- that is one value, so it is recorded as a
+   * VALUE drop. Both are recorded, so the gap is visible rather than silent: a
+   * generator whose protocol is not modeled says so, instead of claiming to be fully
+   * understood.
+   *
+   * @param node the `yield` expression
+   * @return the value of the expression
+   */
+  lowerYield(node) {
+    // The operand: user code, evaluated in the generator's own stream.
+    if (node.expression) {
+      this.lowerExpression(node.expression);
+    }
+    // The expression's own value: what the driver sends back. Unknown.
+    const value = this.emitHavoc(node);
+    if (node.asteriskToken !== undefined) {
+      // A DELEGATED yield: the generator hands the values of ANOTHER iterable to its
+      // driver, one at a time, and the protocol that produces them -- the iterator --
+      // is not in the TAC either.
+      this.emitDrop(
+        "expr.generator_yield.delegate",
+        "a delegated yield hands the values of another iterable to the driver, and the"
+          + " iteration protocol that produces them is not in the TAC",
+        IMPACT.SEMANTICS,
+        node,
+      );
+    } else {
+      this.emitDrop(
+        "expr.generator_yield",
+        "a generator's protocol is not in the TAC: the body is one stream, the values it"
+          + " produces do not reach a driver, and who resumes it and when is not expressed",
+        IMPACT.SEMANTICS,
+        node,
+      );
+    }
+    this.emitDrop(
+      "expr.generator_yield.value",
+      "the value a yield expression produces is not known: for a plain yield it is what the"
+        + " driver sends back into the generator, and for a delegated yield it is the"
+        + " delegated generator's return value",
+      IMPACT.VALUE,
+      node,
+    );
+    return value;
   }
 
   /**
