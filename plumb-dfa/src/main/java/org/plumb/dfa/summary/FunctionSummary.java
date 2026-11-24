@@ -144,6 +144,24 @@ public final class FunctionSummary {
   // a global, for instance), which is the "fires at every call site" case: nothing can narrow
   // it, so the projection must keep it.
   private final Set<Integer> returnTaintCauses;
+  // The operations on each RESULT, for a function that produces more than one.
+  //
+  // `returnOps` is about THE return value -- the one the caller reads as the call's
+  // destination. A call that produces several values (Go's `v, err := f()`) has one
+  // destination and several results, and the ones past the first had nowhere to live:
+  // the summary could say "this function returns tainted data" but not "this function
+  // returns tainted data AS ITS SECOND RESULT". So a caller could not tell a tainted
+  // error from a clean one.
+  //
+  // The key is the result index: 0 is the first result (the one `dest` holds), 1 is the
+  // second, and so on. Index 0 is NOT kept here -- the first result's operations are in
+  // `returnOps`, and keeping a second copy of them would let the two drift apart.
+  private final Map<Integer, Set<Operation>> resultOps;
+  // The formal parameters whose taint REACHES each result, for the results past the
+  // first. Same question as {@link #returnTaintCauses}, asked per result: the taint in
+  // a function's second result may flow through a different formal than the taint in
+  // its first.
+  private final Map<Integer, Set<Integer>> resultTaintCauses;
 
   private FunctionSummary(
       String signature,
@@ -165,7 +183,9 @@ public final class FunctionSummary {
         false,
         stringOps,
         fieldOps,
-        Set.of());
+        Set.of(),
+        Map.of(),
+        Map.of());
   }
 
   private FunctionSummary(
@@ -179,7 +199,9 @@ public final class FunctionSummary {
       boolean claimsBody,
       List<StringOp> stringOps,
       List<FieldOp> fieldOps,
-      Set<Integer> returnTaintCauses) {
+      Set<Integer> returnTaintCauses,
+      Map<Integer, Set<Operation>> resultOps,
+      Map<Integer, Set<Integer>> resultTaintCauses) {
     this.signature = signature;
     // Defensive: wrap in unmodifiable views so
     // the builder can hand out the underlying
@@ -209,6 +231,25 @@ public final class FunctionSummary {
         returnTaintCauses == null || returnTaintCauses.isEmpty()
             ? Set.of()
             : Collections.unmodifiableSet(new LinkedHashSet<>(returnTaintCauses));
+    Map<Integer, Set<Operation>> unmodResults = new HashMap<>();
+    if (resultOps != null) {
+      for (Map.Entry<Integer, Set<Operation>> e : resultOps.entrySet()) {
+        unmodResults.put(
+            e.getKey(), Collections.unmodifiableSet(new LinkedHashSet<>(e.getValue())));
+      }
+    }
+    this.resultOps = Collections.unmodifiableMap(unmodResults);
+    Map<Integer, Set<Integer>> unmodResultCauses = new HashMap<>();
+    if (resultTaintCauses != null) {
+      for (Map.Entry<Integer, Set<Integer>> e : resultTaintCauses.entrySet()) {
+        unmodResultCauses.put(
+            e.getKey(),
+            e.getValue() == null || e.getValue().isEmpty()
+                ? Set.of()
+                : Collections.unmodifiableSet(new LinkedHashSet<>(e.getValue())));
+      }
+    }
+    this.resultTaintCauses = Collections.unmodifiableMap(unmodResultCauses);
   }
 
   /**
@@ -247,6 +288,11 @@ public final class FunctionSummary {
     // field's comment on the summary for why this cannot be inferred
     // from the returnOps alone.
     private final Set<Integer> returnTaintCauses = new LinkedHashSet<>();
+    // The operations on the results past the first, and the formals their taint flows
+    // through. See the summary's fields for why the first result's operations live in
+    // `returnOps` instead of here.
+    private final Map<Integer, Set<Operation>> resultOps = new HashMap<>();
+    private final Map<Integer, Set<Integer>> resultTaintCauses = new HashMap<>();
 
     public Builder(String signature) {
       this.signature = Objects.requireNonNull(signature, "signature");
@@ -274,6 +320,47 @@ public final class FunctionSummary {
       if (op instanceof Operation.HasUnmodelledBehavior) {
         hasUnmodelledBehavior = true;
       }
+      return this;
+    }
+
+    /**
+     * Record an operation on the result at the given index.
+     *
+     * <p>Index 0 is the FIRST result -- the one the caller reads as the call's destination -- and
+     * its operations belong in {@link #recordReturnOp}. This method is for the results PAST the
+     * first: a Go call's error result, the "ok" of a comma-ok assignment.
+     *
+     * @param resultIndex the zero-based index of the result
+     * @param op the operation observed on that result
+     * @return this builder
+     */
+    public Builder recordResultOp(int resultIndex, Operation op) {
+      if (op == null || resultIndex <= 0) return this;
+      resultOps.computeIfAbsent(resultIndex, k -> new LinkedHashSet<>()).add(op);
+      if (op instanceof Operation.HasUnmodelledBehavior) {
+        hasUnmodelledBehavior = true;
+      }
+      return this;
+    }
+
+    /**
+     * Record that the taint in the result at the given index flows through the given formal
+     * parameter.
+     *
+     * <p>Same question as {@link #recordReturnTaintCause}, asked about a result past the first: the
+     * taint in a function's second result may flow through a different formal than the taint in its
+     * first, and a caller cannot narrow the two separately unless the summary says which is which.
+     *
+     * @param resultIndex the zero-based index of the result
+     * @param paramIndex the formal parameter the taint flows through
+     * @return this builder
+     */
+    public Builder recordResultTaintCause(int resultIndex, int paramIndex) {
+      if (resultIndex <= 0 || paramIndex < 0) return this;
+      resultTaintCauses.computeIfAbsent(resultIndex, k -> new LinkedHashSet<>()).add(paramIndex);
+      // The taint in that result flows through this formal, so the result depends on an
+      // argument.
+      this.mayReturnArgument = true;
       return this;
     }
 
@@ -400,7 +487,9 @@ public final class FunctionSummary {
           claimsBody,
           stringOps,
           fieldOps,
-          returnTaintCauses);
+          returnTaintCauses,
+          resultOps,
+          resultTaintCauses);
     }
   }
 
@@ -414,6 +503,41 @@ public final class FunctionSummary {
 
   public Set<Operation> returnOps() {
     return returnOps;
+  }
+
+  /**
+   * The operations on the result at the given index.
+   *
+   * <p>Index 0 is the FIRST result, and its operations are {@link #returnOps()}. The results past
+   * the first are the ones a call that produces several values binds to several variables -- Go's
+   * error result, the "ok" of a comma-ok assignment.
+   *
+   * @param resultIndex the zero-based index of the result
+   * @return the operations on that result, or an empty set when there are none
+   */
+  public Set<Operation> resultOpsAt(int resultIndex) {
+    if (resultIndex <= 0) {
+      return returnOps;
+    }
+    Set<Operation> ops = resultOps.get(resultIndex);
+    return ops == null ? Set.of() : ops;
+  }
+
+  /**
+   * The formal parameters whose taint reaches the result at the given index.
+   *
+   * <p>Empty means the taint did not come from a parameter, so there is nothing to narrow it by and
+   * it fires at every call site.
+   *
+   * @param resultIndex the zero-based index of the result
+   * @return the formal parameter indices, or an empty set when there are none
+   */
+  public Set<Integer> resultTaintCausesAt(int resultIndex) {
+    if (resultIndex <= 0) {
+      return returnTaintCauses;
+    }
+    Set<Integer> causes = resultTaintCauses.get(resultIndex);
+    return causes == null ? Set.of() : causes;
   }
 
   public Set<String> calleesReached() {
@@ -555,6 +679,16 @@ public final class FunctionSummary {
     for (Operation op : returnOps) {
       if (filter.test(op)) b.recordReturnOp(op);
     }
+    for (Map.Entry<Integer, Set<Operation>> e : resultOps.entrySet()) {
+      for (Operation op : e.getValue()) {
+        if (filter.test(op)) b.recordResultOp(e.getKey(), op);
+      }
+    }
+    for (Map.Entry<Integer, Set<Integer>> e : resultTaintCauses.entrySet()) {
+      for (Integer cause : e.getValue()) {
+        b.recordResultTaintCause(e.getKey(), cause);
+      }
+    }
     if (hasUnmodelledBehavior && filter.test(new Operation.HasUnmodelledBehavior("any"))) {
       b.markUnmodelled();
     }
@@ -621,6 +755,11 @@ public final class FunctionSummary {
     for (Operation op : returnOps) {
       b.recordReturnOp(op);
     }
+    for (Map.Entry<Integer, Set<Operation>> entry : resultOps.entrySet()) {
+      for (Operation op : entry.getValue()) {
+        b.recordResultOp(entry.getKey().intValue(), op);
+      }
+    }
     for (String callee : calleesReached) {
       b.recordCallee(callee);
     }
@@ -643,6 +782,11 @@ public final class FunctionSummary {
     }
     for (Integer cause : returnTaintCauses) {
       b.recordReturnTaintCause(cause.intValue());
+    }
+    for (Map.Entry<Integer, Set<Integer>> entry : resultTaintCauses.entrySet()) {
+      for (Integer cause : entry.getValue()) {
+        b.recordResultTaintCause(entry.getKey().intValue(), cause.intValue());
+      }
     }
     return b.build();
   }
@@ -712,6 +856,18 @@ public final class FunctionSummary {
       for (Operation op : returnOps) b.recordReturnOp(op);
       for (Integer cause : returnTaintCauses) b.recordReturnTaintCause(cause);
     }
+    // The results PAST the first follow the same rule, each against its own causes: the
+    // taint in a function's second result may flow through a different formal than the
+    // taint in its first, so the two are narrowed separately.
+    for (Map.Entry<Integer, Set<Operation>> e : resultOps.entrySet()) {
+      Set<Integer> causes = resultTaintCauses.getOrDefault(e.getKey(), Set.of());
+      boolean survives = causes.isEmpty() || !java.util.Collections.disjoint(causes, liveFormals);
+      if (!survives) {
+        continue;
+      }
+      for (Operation op : e.getValue()) b.recordResultOp(e.getKey(), op);
+      for (Integer cause : causes) b.recordResultTaintCause(e.getKey(), cause);
+    }
     if (hasUnmodelledBehavior) b.markUnmodelled();
     if (hasBody) b.markHasBody();
     if (mayReturnArgument) b.markMayReturnArgument();
@@ -764,6 +920,17 @@ public final class FunctionSummary {
     }
     for (Operation op : returnOps) b.recordReturnOp(op);
     for (Operation op : other.returnOps) b.recordReturnOp(op);
+    // The results past the first are unioned the same way, per result index.
+    for (Map.Entry<Integer, Set<Operation>> e : resultOps.entrySet()) {
+      for (Operation op : e.getValue()) {
+        b.recordResultOp(e.getKey(), op);
+      }
+    }
+    for (Map.Entry<Integer, Set<Operation>> e : other.resultOps.entrySet()) {
+      for (Operation op : e.getValue()) {
+        b.recordResultOp(e.getKey(), op);
+      }
+    }
     for (String c : calleesReached) b.recordCallee(c);
     for (String c : other.calleesReached) b.recordCallee(c);
     // stringOps and fieldOps are unioned
@@ -781,6 +948,16 @@ public final class FunctionSummary {
     // The return taint's causes are unioned, like every other fact here.
     for (Integer cause : returnTaintCauses) b.recordReturnTaintCause(cause);
     for (Integer cause : other.returnTaintCauses) b.recordReturnTaintCause(cause);
+    for (Map.Entry<Integer, Set<Integer>> e : resultTaintCauses.entrySet()) {
+      for (Integer cause : e.getValue()) {
+        b.recordResultTaintCause(e.getKey(), cause);
+      }
+    }
+    for (Map.Entry<Integer, Set<Integer>> e : other.resultTaintCauses.entrySet()) {
+      for (Integer cause : e.getValue()) {
+        b.recordResultTaintCause(e.getKey(), cause);
+      }
+    }
     if (hasUnmodelledBehavior || other.hasUnmodelledBehavior) {
       b.markUnmodelled();
     }

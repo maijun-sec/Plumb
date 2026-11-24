@@ -315,7 +315,22 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * so callers see "this function returns tainted data". Cleared at every function boundary by
    * {@link #initFunction}.
    */
-  private final List<TacOperand.TacVar> passedOutTaint = new ArrayList<>();
+  /**
+   * A value this function hands back to its caller, and the RESULT SLOT it lands in.
+   *
+   * <p>Slot 0 is the ordinary return value -- the one the caller reads as the call's destination.
+   * The slots past it are the further results of a call that produces several values (Go's {@code
+   * v, err := f()}): the error result, the "ok" of a comma-ok assignment.
+   *
+   * <p>Populated in {@link #checkInstruction}'s {@code RETURN} branch; consumed in {@link
+   * #summarizeFunction} to write {@link Operation.TaintPropagate} entries on the summary's {@code
+   * returnOps} (slot 0) and {@code resultOps} (the slots past it) so callers see "this function
+   * returns tainted data" AND "this function returns tainted data as its SECOND result". Cleared at
+   * every function boundary by {@link #initFunction}.
+   */
+  private record PassedOut(int resultIndex, TacOperand.TacVar value) {}
+
+  private final List<PassedOut> passedOutTaint = new ArrayList<>();
 
   /**
    * Per-function accumulator of string-passthrough operations (e.g. {@code arg.toLowerCase()})
@@ -1400,8 +1415,17 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // summary-fold path would silently miss
         // any "helper(s) -> s" style
         // propagation.
-        if (ins.lhs1 instanceof TacOperand.TacVar ret) {
-          passedOutTaint.add(ret);
+        //
+        // EVERY result slot is recorded, not just the first: a function that returns
+        // several values hands back several, and the caller's variables for the ones past
+        // the first are bound to the results this instruction names. The instruction's own
+        // result list is the authority on which variable holds which result, so the slot
+        // index and the variable are read from the same place.
+        int resultCount = ins.resultCount();
+        for (int slot = 0; slot < resultCount; slot++) {
+          if (ins.resultDestAt(slot) instanceof TacOperand.TacVar ret) {
+            passedOutTaint.add(new PassedOut(slot, ret));
+          }
         }
       }
       // try / catch / finally IR.
@@ -5878,6 +5902,55 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         taintPaths.put(destVar, java.util.Collections.unmodifiableList(fold));
       }
     }
+    // The results PAST the first.
+    //
+    // A call that produces several values (Go's `v, err := f()`) binds the ones after the
+    // first to variables of their own. The callee's summary says which of ITS results carry
+    // taint, and the call site's result list says which variable holds each result -- the two
+    // meet here, by index.
+    //
+    // Without this, the second result was a variable nothing ever wrote, and a variable
+    // nothing writes is indistinguishable from a clean one: the taint in a tainted error was
+    // lost before the analysis could ask about it, and a sink that consumed that error was
+    // never reported.
+    java.util.List<TacOperand> callResults = ins.knownResultDests();
+    for (int slot = 1; slot < callResults.size(); slot++) {
+      if (!(callResults.get(slot) instanceof TacOperand.TacVar resVar)) continue;
+      if (taintedVars.containsKey(resVar)) continue;
+      boolean resTainted =
+          calleeSummary.resultOpsAt(slot).stream()
+              .anyMatch(op -> op instanceof Operation.TaintPropagate);
+      if (!resTainted) continue;
+      String resLabel =
+          enrichTaintLabelWithPassthroughs("callee-ret:" + calleeSig + "#r" + slot, calleeSummary);
+      taintedVars.put(resVar, resLabel);
+      List<FlowStep> fold = new ArrayList<>();
+      fold.add(
+          new FlowStep(
+              "summary-fold",
+              "",
+              ins.line,
+              ins.column,
+              calleeSig,
+              "call " + calleeSig + " result#" + slot + " carries taint"));
+      int summaryHandle =
+          v2Builder.addSummaryFold(
+              TraceNode.Op.SUMMARY_TAINT_PROPAGATE,
+              calleeSig,
+              slot,
+              List.of(new OperandRef.Var(resVar.name(), 0)),
+              -1, // orphan parent -- the
+              // cross-fn summary
+              // itself is the source
+              "call " + calleeSig + " result#" + slot + " carries taint",
+              "",
+              ins.line,
+              ins.column,
+              calleeSig);
+      v2TraceHandle.put(resVar, summaryHandle);
+      appendPassthroughStepsForSummary(fold, calleeSummary, ins);
+      taintPaths.put(resVar, java.util.Collections.unmodifiableList(fold));
+    }
     // Conservative caller-arg :
     // dest taint passthrough. The
     // existing summary-fold marks the dest
@@ -6573,29 +6646,53 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     //    this, a `helper(s) -> s` style
     //    passthrough would silently lose
     //    taint.
-    for (TacOperand.TacVar ret : passedOutTaint) {
-      if (taintedVars.containsKey(ret)) {
+    //
+    //    The results PAST the first get their
+    //    own entry (the summary's resultOps),
+    //    keyed by the result's index. The
+    //    caller binds each of its result
+    //    variables to the matching index, so
+    //    "this function returns tainted data AS
+    //    ITS SECOND RESULT" is a statement the
+    //    caller can act on -- and it is the
+    //    difference between a tainted error
+    //    and a clean one at the call site.
+    for (PassedOut po : passedOutTaint) {
+      TacOperand.TacVar ret = po.value();
+      if (!taintedVars.containsKey(ret)) {
+        continue;
+      }
+      int slot = po.resultIndex();
+      if (slot == 0) {
         b.recordReturnOp(
             new Operation.TaintPropagate("return:" + ret.name() + " in " + fn.signature(), 1.0));
-        // Which formal does this return taint flow THROUGH? The return value
-        // is usually the parameter itself, or something derived from it, and
-        // the parameter's taint label is the same label the returned value
-        // carries. Recording the cause lets a caller narrow the return taint
-        // to the call sites that actually feed that parameter with taint --
-        // without it, a helper called once with a tainted argument and once
-        // with a clean one would taint BOTH call results.
-        String retLabel = taintedVars.get(ret);
-        if (retLabel != null) {
-          for (int i = 0; i < params.size(); i++) {
-            TacOperand.TacVar p = params.get(i);
-            String paramLabel = taintedVars.get(p);
-            if (paramLabel != null && paramLabel.equals(retLabel)) {
+      } else {
+        b.recordResultOp(
+            slot,
+            new Operation.TaintPropagate(
+                "result" + slot + ":" + ret.name() + " in " + fn.signature(), 1.0));
+      }
+      // Which formal does this return taint flow THROUGH? The return value
+      // is usually the parameter itself, or something derived from it, and
+      // the parameter's taint label is the same label the returned value
+      // carries. Recording the cause lets a caller narrow the return taint
+      // to the call sites that actually feed that parameter with taint --
+      // without it, a helper called once with a tainted argument and once
+      // with a clean one would taint BOTH call results.
+      String retLabel = taintedVars.get(ret);
+      if (retLabel != null) {
+        for (int i = 0; i < params.size(); i++) {
+          TacOperand.TacVar p = params.get(i);
+          String paramLabel = taintedVars.get(p);
+          if (paramLabel != null && paramLabel.equals(retLabel)) {
+            if (slot == 0) {
               b.recordReturnTaintCause(i);
-              break;
+            } else {
+              b.recordResultTaintCause(slot, i);
             }
+            break;
           }
         }
-      } else {
       }
     }
     // 2. For each observed sink call, record

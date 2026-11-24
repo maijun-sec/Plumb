@@ -869,6 +869,19 @@
                              keep reaching it, and two callees that disagree
                              about what they return are not evidence. -->
                         <include>org/plumb/dfa/taint/CallReturnTypeTest.java</include>
+                        <!-- A call that produces SEVERAL values: Go's `v, err := f()`.
+                             The TAC's CALL has one destination, so the results after
+                             the first had nowhere to go, and a variable nothing
+                             writes is indistinguishable from a clean one, so the
+                             taint in a tainted error result was gone before the
+                             analysis could ask about it. The test pins both
+                             directions: the taint in a callee's SECOND result
+                             reaches the caller's variable for it, and a clean
+                             second result stays clean when the first one is
+                             tainted (a binding that tainted every result would
+                             pass the first case and be a false positive on every
+                             Go program whose error result is the clean one). -->
+                        <include>org/plumb/dfa/taint/MultiResultTaintTest.java</include>
                         <!-- The iteration protocol has a different NAME in every language
                              that has one, and the engine recognises each of them. The
                              list has to name these classes: a test that is not on the

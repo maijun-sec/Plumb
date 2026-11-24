@@ -21,6 +21,9 @@
  */
 package org.plumb.dfa.summary;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import org.plumb.dfa.cg.FunctionSignature;
 
@@ -46,11 +49,35 @@ public final class MethodSummary {
   public final ReturnShape returnShape;
   public final SideEffect sideEffect;
 
+  /**
+   * The shapes of the results PAST the first.
+   *
+   * <p>A call that produces several values (Go's {@code v, err := f()}) binds each of them to a
+   * variable of its own, and the caller has to know what each one holds -- the same question {@link
+   * #returnShape} answers for the first result.
+   *
+   * <p>The list is indexed by result slot: entry 0 is the SECOND result. It is empty when the
+   * method produces a single result, which is the ordinary case.
+   */
+  public final List<ReturnShape> extraResultShapes;
+
   public MethodSummary(
       FunctionSignature signature, ReturnShape returnShape, SideEffect sideEffect) {
+    this(signature, returnShape, sideEffect, List.of());
+  }
+
+  public MethodSummary(
+      FunctionSignature signature,
+      ReturnShape returnShape,
+      SideEffect sideEffect,
+      List<ReturnShape> extraResultShapes) {
     this.signature = Objects.requireNonNull(signature);
     this.returnShape = Objects.requireNonNull(returnShape);
     this.sideEffect = sideEffect == null ? SideEffect.pure() : sideEffect;
+    this.extraResultShapes =
+        extraResultShapes == null
+            ? List.of()
+            : Collections.unmodifiableList(new ArrayList<>(extraResultShapes));
   }
 
   public boolean isPure() {

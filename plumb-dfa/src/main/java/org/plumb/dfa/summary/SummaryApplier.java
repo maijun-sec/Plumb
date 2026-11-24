@@ -224,6 +224,11 @@ public final class SummaryApplier {
   /**
    * Fold the {@link ReturnShape} into a {@code RETURN_VALUE_FOLDED} fact on the call's destination.
    * If the call has no destination (a bare {@code CALL f();} statement) this is a no-op.
+   *
+   * <p>The results PAST the first are folded onto the variables that hold them, by index: the
+   * call's result list says which variable holds which result, and the callee's summary says what
+   * each of its results holds. Without this, a call that produces several values had one
+   * destination and the rest of its results had no fact at all.
    */
   public static void applyReturnValue(
       TacInstruction call, MethodSummary s, AnalysisContext ctx, List<TacOperand> args) {
@@ -244,6 +249,39 @@ public final class SummaryApplier {
     String value = encodeShape(s, args);
     FactBag bag = ctx.factBag();
     bag.add(new Fact(kind, dest, value, call));
+    applyExtraResultValues(call, s, ctx, kind, args);
+  }
+
+  /**
+   * Fold the shapes of the results past the first onto the variables that hold them.
+   *
+   * <p>The call's result list and the summary's extra-result shapes are both indexed by result
+   * slot, so they meet at the same index. A slot with no shape, or no variable, is skipped: a
+   * result the programmer discarded has no variable to carry a fact.
+   */
+  private static void applyExtraResultValues(
+      TacInstruction call,
+      MethodSummary s,
+      AnalysisContext ctx,
+      FactKind kind,
+      List<TacOperand> args) {
+    if (s == null) return;
+    List<ReturnShape> shapes = s.extraResultShapes;
+    if (shapes == null || shapes.isEmpty()) return;
+    List<TacOperand> results = call.knownResultDests();
+    for (int slot = 1; slot < results.size() && slot - 1 < shapes.size(); slot++) {
+      TacOperand res = results.get(slot);
+      if (!(res instanceof TacOperand.TacVar v)) {
+        // The result is not bound to a variable (the programmer discarded it), so
+        // there is nothing to fold onto.
+        continue;
+      }
+      ReturnShape shape = shapes.get(slot - 1);
+      if (shape == null) continue;
+      String value = encodeShape(shape, args);
+      if (value == null) continue;
+      ctx.factBag().add(new Fact(kind, v, value, call));
+    }
   }
 
   /**
@@ -286,7 +324,11 @@ public final class SummaryApplier {
 
   static String encodeShape(MethodSummary s, List<TacOperand> args) {
     if (s == null) return "top";
-    ReturnShape r = s.returnShape;
+    return encodeShape(s.returnShape, args);
+  }
+
+  static String encodeShape(ReturnShape r, List<TacOperand> args) {
+    if (r == null) return "top";
     switch (r.kind) {
       case RETURN_VOID:
         return "void";

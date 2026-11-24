@@ -457,6 +457,36 @@ public final class SidecarTacMapper {
       }
       builder.args(list);
     }
+    // The results of a call that produces more than one value, and the variables a
+    // by-reference argument is written back into.
+    //
+    // Both have been on the wire for a long time (the Go side car sends `resultDests`;
+    // both protocols declare `refOutDests`), and neither had anywhere to land on the
+    // Java side: the mapper read neither, and the IR had no field for them. The
+    // engine therefore saw a Go `v, err := f()` as a call with ONE result, and a
+    // variable `err` that nothing ever writes -- which is indistinguishable from a
+    // clean `err`, so the error's taint was lost before the analysis began.
+    //
+    // A null entry is MEANINGFUL in both lists: it says "this result is not bound"
+    // (the programmer discarded it with the blank identifier) and "this argument is
+    // not passed by reference". It is kept, because the position is the meaning --
+    // dropping the entry would shift every later result one slot to the left.
+    Json.JsonArray resultDests = wire.getArray("resultDests");
+    if (resultDests != null && resultDests.size() > 0) {
+      List<TacOperand> list = new ArrayList<>();
+      for (int i = 0; i < resultDests.size(); i++) {
+        list.add(toOperand(resultDests.getObject(i)));
+      }
+      builder.resultDests(list);
+    }
+    Json.JsonArray refOutDests = wire.getArray("refOutDests");
+    if (refOutDests != null && refOutDests.size() > 0) {
+      List<TacOperand> list = new ArrayList<>();
+      for (int i = 0; i < refOutDests.size(); i++) {
+        list.add(toOperand(refOutDests.getObject(i)));
+      }
+      builder.refOutDests(list);
+    }
     return builder.build();
   }
 

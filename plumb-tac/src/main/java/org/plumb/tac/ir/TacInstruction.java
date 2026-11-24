@@ -246,6 +246,48 @@ public final class TacInstruction implements java.io.Serializable {
   public final List<TacOperand> args;
 
   /**
+   * For CALL / RETURN: the destinations of the results this instruction produces, in order.
+   *
+   * <p>A call may produce more than one value. Go's {@code v, err := f()} has two: the value and
+   * the error. The TAC's CALL has ONE destination, so the further results had nowhere to go -- the
+   * front end emitted them and the Java side dropped them, and the engine saw a call with one
+   * result plus a variable ({@code err}) that nothing ever writes. A variable nothing writes is
+   * indistinguishable from a clean one, so the error's taint was lost before the analysis started.
+   *
+   * <p><b>Entry 0 is the FIRST result.</b> For a CALL it is normally the same value as {@link
+   * #dest}; for a RETURN it is normally the same value as {@link #lhs1}. The entries after it are
+   * the further results: Go's error result, the "ok" of a comma-ok assignment, a channel receive's
+   * open flag. The list is in the same order the wire protocol sends it, so the index of a result
+   * is the same on both sides.
+   *
+   * <p>A null entry means the result exists but is bound to nothing -- the programmer discarded it
+   * with the blank identifier ({@code v, _ := f()}). The entry is KEPT, because the POSITION is the
+   * meaning: dropping it would shift every later result one slot to the left, and the engine would
+   * then read the error result as the value result.
+   *
+   * <p>Empty when the instruction produces a single result, which is the ordinary case. Then the
+   * one result is {@link #dest} (or {@link #lhs1} for a RETURN).
+   */
+  public final List<TacOperand> resultDests;
+
+  /**
+   * For CALL: the variables the call writes back into through a by-reference argument.
+   *
+   * <p>The list is parallel to {@link #args}: entry i is the variable that argument i is written
+   * back into, and a null entry means that argument is not passed by reference. When the argument
+   * itself IS the variable -- the ordinary case -- the entry is the same operand as {@code
+   * args.get(i)}.
+   *
+   * <p>Empty when the call passes no argument by reference.
+   *
+   * <p><b>No front end fills this list yet.</b> Both wire protocols declare it and neither side car
+   * writes it, so nothing in the engine reads it today: there is no code path that could. The shape
+   * is connected anyway -- the IR has a place for it and the mapper reads it -- because a field
+   * with nowhere to land cannot be connected later without changing the IR a second time.
+   */
+  public final List<TacOperand> refOutDests;
+
+  /**
    * For NEW: the constructed type. For NEWARRAY: the component type. For INSTANCEOF: the type
    * tested against. For CATCH_HANDLER: the declared exception type. For THROW: the type of the
    * thrown value.
@@ -342,6 +384,14 @@ public final class TacInstruction implements java.io.Serializable {
         b.args == null
             ? Collections.emptyList()
             : Collections.unmodifiableList(new ArrayList<>(b.args));
+    this.resultDests =
+        b.resultDests == null
+            ? Collections.emptyList()
+            : Collections.unmodifiableList(new ArrayList<>(b.resultDests));
+    this.refOutDests =
+        b.refOutDests == null
+            ? Collections.emptyList()
+            : Collections.unmodifiableList(new ArrayList<>(b.refOutDests));
     this.ctorType = b.ctorType;
     this.fieldName = b.fieldName;
     this.trueLabel = b.trueLabel;
@@ -398,6 +448,68 @@ public final class TacInstruction implements java.io.Serializable {
     return calleeParamTypes == null ? Collections.emptyList() : calleeParamTypes;
   }
 
+  /**
+   * The destinations of the results after the first, or an empty list when there are none.
+   *
+   * <p>An instruction that came from a cache written before this field existed carries none: the
+   * deserializer does not run the constructor. Read it through this accessor, not through the
+   * field. An entry may itself be null -- that is how a discarded result is spelled.
+   */
+  public List<TacOperand> knownResultDests() {
+    return resultDests == null ? Collections.emptyList() : resultDests;
+  }
+
+  /**
+   * The by-reference write-back variables, or an empty list when the call passes none.
+   *
+   * <p>An instruction that came from a cache written before this field existed carries none: the
+   * deserializer does not run the constructor. Read it through this accessor, not through the
+   * field. An entry may itself be null -- that is how "this argument is not by reference" is
+   * spelled.
+   */
+  public List<TacOperand> knownRefOutDests() {
+    return refOutDests == null ? Collections.emptyList() : refOutDests;
+  }
+
+  /**
+   * The operand that holds the result at the given index.
+   *
+   * <p>Index 0 is the FIRST result. When the instruction carries a result list, the list answers
+   * every index; when it does not, the single result is the instruction's own destination ({@link
+   * #dest} for a CALL, {@link #lhs1} for a RETURN).
+   *
+   * @param resultIndex the zero-based index of the result
+   * @return the operand the result is bound to, or null when the result is unbound or the index is
+   *     out of range
+   */
+  public TacOperand resultDestAt(int resultIndex) {
+    if (resultIndex < 0) {
+      return null;
+    }
+    List<TacOperand> all = knownResultDests();
+    if (!all.isEmpty()) {
+      return resultIndex < all.size() ? all.get(resultIndex) : null;
+    }
+    if (resultIndex == 0) {
+      return kind == Kind.RETURN ? lhs1 : dest;
+    }
+    return null;
+  }
+
+  /**
+   * How many results this instruction produces.
+   *
+   * <p>A CALL with no destination and no result list produces none -- a bare {@code f();}
+   * statement. Everything else produces at least one.
+   */
+  public int resultCount() {
+    List<TacOperand> all = knownResultDests();
+    if (!all.isEmpty()) {
+      return all.size();
+    }
+    return (kind == Kind.RETURN ? lhs1 : dest) == null ? 0 : 1;
+  }
+
   public static Builder builder(Kind kind) {
     return new Builder(kind);
   }
@@ -413,6 +525,8 @@ public final class TacInstruction implements java.io.Serializable {
     private String calleeSig;
     private List<String> calleeParamTypes;
     private List<TacOperand> args;
+    private List<TacOperand> resultDests;
+    private List<TacOperand> refOutDests;
     private TacType ctorType;
     private String fieldName;
     private String trueLabel;
@@ -476,6 +590,27 @@ public final class TacInstruction implements java.io.Serializable {
 
     public Builder args(List<TacOperand> a) {
       this.args = a;
+      return this;
+    }
+
+    /**
+     * Records the destinations of the results, in order.
+     *
+     * <p>Entry 0 is the first result. A null entry means that result is bound to nothing; the entry
+     * is kept so the positions stay aligned with the results themselves.
+     */
+    public Builder resultDests(List<TacOperand> dests) {
+      this.resultDests = dests;
+      return this;
+    }
+
+    /**
+     * Records the by-reference write-back variables, parallel to the argument list.
+     *
+     * <p>A null entry means that argument is not passed by reference.
+     */
+    public Builder refOutDests(List<TacOperand> dests) {
+      this.refOutDests = dests;
       return this;
     }
 

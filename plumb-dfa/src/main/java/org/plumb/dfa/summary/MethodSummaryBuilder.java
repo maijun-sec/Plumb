@@ -104,8 +104,87 @@ public final class MethodSummaryBuilder {
     this.currentParams = fn.params();
     FunctionSignature sig = parseSignature(fn);
     ReturnShape shape = buildReturnShape(fn);
+    List<ReturnShape> extraShapes = buildExtraResultShapes(fn);
     SideEffect side = buildSideEffect(fn);
-    return new MethodSummary(sig, shape, side);
+    return new MethodSummary(sig, shape, side, extraShapes);
+  }
+
+  /**
+   * The shapes of the results PAST the first.
+   *
+   * <p>A method that returns several values (Go's {@code func f() (int, error)}) hands back one
+   * value per result, and the caller binds each of them to a variable of its own. The builder's
+   * {@link #buildReturnShape} answers "what does the first result look like"; this answers the same
+   * question for the rest, so the caller can fold each result onto the variable that holds it.
+   *
+   * <p>The list is indexed by result slot: entry 0 is the SECOND result. It is empty when the
+   * method produces a single result.
+   */
+  private List<ReturnShape> buildExtraResultShapes(TacFunction fn) {
+    List<TacInstruction> returns = new ArrayList<>();
+    for (TacInstruction ins : fn.instructions()) {
+      if (ins.kind == TacInstruction.Kind.RETURN) {
+        returns.add(ins);
+      }
+    }
+    if (returns.isEmpty()) {
+      return List.of();
+    }
+    int extraCount = 0;
+    for (TacInstruction ret : returns) {
+      extraCount = Math.max(extraCount, Math.max(0, ret.knownResultDests().size() - 1));
+    }
+    if (extraCount == 0) {
+      return List.of();
+    }
+    Map<String, TacInstruction> lastDef = lastDefMap(fn);
+    List<ReturnShape> out = new ArrayList<>(extraCount);
+    for (int slot = 1; slot <= extraCount; slot++) {
+      ReturnShape shape = null;
+      for (TacInstruction ret : returns) {
+        List<TacOperand> results = ret.knownResultDests();
+        if (slot >= results.size()) {
+          // This return does not bind that many results. It contributes nothing to
+          // the slot, and the slot keeps the shape the other returns agree on.
+          continue;
+        }
+        ReturnShape s = classifyResult(results.get(slot), lastDef);
+        if (shape == null) {
+          shape = s;
+        } else if (shape.kind != s.kind) {
+          shape = ReturnShape.unknown("multiple returns with mismatched shapes");
+          break;
+        }
+      }
+      out.add(shape == null ? ReturnShape.unknown("result is not bound") : shape);
+    }
+    return out;
+  }
+
+  /** Classify one result slot's operand the way a return value is classified. */
+  private ReturnShape classifyResult(TacOperand operand, Map<String, TacInstruction> lastDef) {
+    if (operand == null) {
+      // The result exists but is bound to nothing (the programmer discarded it).
+      return ReturnShape.unknown("result is not bound");
+    }
+    if (operand instanceof TacOperand.Const c) {
+      return ReturnShape.constShape(c);
+    }
+    if (operand instanceof TacOperand.TacVar v) {
+      return chase(v, lastDef, new java.util.HashSet<>());
+    }
+    return ReturnShape.unknown("unhandled result operand kind");
+  }
+
+  /** The last definition of every variable the body writes, keyed by the variable's name. */
+  private static Map<String, TacInstruction> lastDefMap(TacFunction fn) {
+    Map<String, TacInstruction> lastDef = new HashMap<>();
+    for (TacInstruction ins : fn.instructions()) {
+      if (ins.dest instanceof TacOperand.TacVar v) {
+        lastDef.put(v.name(), ins);
+      }
+    }
+    return lastDef;
   }
 
   private static FunctionSignature parseSignature(TacFunction fn) {
@@ -150,12 +229,7 @@ public final class MethodSummaryBuilder {
     // 2) Build last-def
     // map for TacVar
     // dests.
-    Map<String, TacInstruction> lastDef = new HashMap<>();
-    for (TacInstruction ins : fn.instructions()) {
-      if (ins.dest instanceof TacOperand.TacVar v) {
-        lastDef.put(v.name(), ins);
-      }
-    }
+    Map<String, TacInstruction> lastDef = lastDefMap(fn);
     // 3) Classify each
     // return.
     List<ReturnShape> shapes = new ArrayList<>(returns.size());
