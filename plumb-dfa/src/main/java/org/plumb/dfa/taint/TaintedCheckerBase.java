@@ -337,6 +337,32 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private final List<PassedOut> passedOutTaint = new ArrayList<>();
 
   /**
+   * Per-function accumulator of the taint this function writes INTO its formal parameters.
+   *
+   * <p>A by-reference argument (C#'s {@code out} / {@code ref}) is written by the callee and read
+   * by the caller, so the value that crosses the call boundary travels through the FORMAL rather
+   * than through a result. The summary needs to say so, or a caller that passed an {@code out}
+   * variable never learns that the callee wrote tainted data into it -- the variable stays a
+   * variable nothing writes, which is indistinguishable from a clean one, and a sink that consumed
+   * it is never reported.
+   *
+   * <p>Each entry is a {@link ParamWrite} recording the formal parameter's index and the label of
+   * the value that was written into it. Consumed by {@link #summarizeFunction}, which is where the
+   * label is matched against the formals' own labels to find WHICH formal the written taint flows
+   * through -- the same question {@code returnTaintCauses} answers for the return value.
+   *
+   * <p>{@code targetLabelBefore} is the label the written-into formal carried BEFORE this write. It
+   * is the only way to tell a `ref` parameter (whose value the callee derived from what it was
+   * given, so the taint flows through that very formal) from an `out` parameter (which the callee
+   * filled with a value of its own, so the taint comes from nowhere the caller can narrow it).
+   *
+   * <p>Cleared at every function boundary by {@link #initFunction}.
+   */
+  private record ParamWrite(int formalIndex, String label, String targetLabelBefore) {}
+
+  private final List<ParamWrite> paramWrites = new ArrayList<>();
+
+  /**
    * Per-function accumulator of string-passthrough operations (e.g. {@code arg.toLowerCase()})
    * observed during {@link #checkInstruction}. Each entry is a {@link StringOp} recording the
    * passthrough method name plus the source operand's current param index (when the source is a
@@ -976,6 +1002,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     pathConditionFragments.clear();
     thrownTaintByInsnIdentity.clear();
     passedOutTaint.clear();
+    paramWrites.clear();
     // Per-function accumulators: stringOps, fieldOps, the field-taint
     // tracker, and class-ref TacVars are all local to one function.
     // Cross-function flow goes through the FunctionSummary cache, not
@@ -1114,6 +1141,18 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // follows it has to be able to ask about it.
     deserializationFilters.observeLambdaBindings(ins);
     deserializationFilters.observe(ins);
+    // A MOVE into a FORMAL parameter is a write into that parameter. When the value written is
+    // tainted, the taint crosses the call boundary through the parameter -- which is what a
+    // by-reference argument (C#'s `out` / `ref`) carries.
+    //
+    // It is observed BEFORE the per-kind handlers, because the handler for a MOVE is what puts
+    // the written value's label onto the formal: once the MOVE has run, the formal carries the
+    // label of what was just written into it. A search for "which formal does this taint flow
+    // through" that runs afterwards matches the formal with ITSELF -- and that is not evidence of
+    // flow-through, it is the tautology of a label that was just copied there.
+    if (ins.kind == TacInstruction.Kind.MOVE) {
+      recordParamWrite(ins, fn);
+    }
     switch (ins.kind) {
       case MOVE -> propagateMOVE(ins);
       // FIELDLOAD: dest = this.f
@@ -1473,6 +1512,42 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         recordPassedOutResults(ins);
       }
       default -> {}
+    }
+  }
+
+  /**
+   * Record a tainted write into one of this function's formal parameters.
+   *
+   * <p>Only a MOVE can write a formal: a MOVE is the one instruction whose destination may be a
+   * parameter (a local is written by a MOVE too, and is not a formal -- that is what the parameter
+   * list decides). The value written has to be TAINTED: a clean value written into an {@code out}
+   * parameter leaves the caller's variable clean, and recording that as a tainted write would be a
+   * false positive.
+   *
+   * <p>The label recorded is the written value's OWN label, read at the moment of the write. That
+   * is what {@link #summarizeFunction} matches against the formals' labels to find which formal the
+   * written taint flows through.
+   *
+   * @param ins the MOVE instruction
+   * @param fn the function being analysed
+   */
+  private void recordParamWrite(TacInstruction ins, TacFunction fn) {
+    if (fn == null) return;
+    if (!(ins.dest instanceof TacOperand.TacVar dest)) return;
+    if (!(ins.lhs1 instanceof TacOperand.TacVar source)) return;
+    String label = taintedVars.get(source);
+    if (label == null) return;
+    List<TacOperand.TacVar> params = fn.params();
+    for (int i = 0; i < params.size(); i++) {
+      if (params.get(i).name().equals(dest.name())) {
+        // The label the formal carried BEFORE this write, read through the formal's own variable
+        // so that it is the same entry the summary looks at. It says whether the written taint
+        // came from the formal itself (a `ref` parameter) or from somewhere else (an `out`
+        // parameter the callee filled with a value of its own).
+        String before = taintedVars.get(params.get(i));
+        paramWrites.add(new ParamWrite(i, label, before));
+        return;
+      }
     }
   }
 
@@ -5484,6 +5559,35 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
+   * The TAC argument index a formal parameter lands on at this call site.
+   *
+   * <p>The convention is the one the rest of the engine uses: an INSTANCE call keeps the receiver
+   * at {@code args[0]}, so user argument {@code i} is at {@code args[i + 1]}; a STATIC call has no
+   * receiver object, so user argument {@code i} is at {@code args[i]}. The two-tier fallback tries
+   * the instance position first and falls back to the static one.
+   *
+   * <p>Every consumer of that convention has to agree on it -- the in-direction binding, the
+   * call-site projection and the by-reference write-back all read the SAME mapping. If one of them
+   * used a different one, a call site's argument would land on one formal in that consumer and on
+   * another in the next, and the taint would be attributed to the wrong parameter.
+   *
+   * @param ins the CALL instruction
+   * @param formalIndex the zero-based index of the formal parameter (user arguments only; the
+   *     receiver is not one of them)
+   * @return the TAC argument index, or -1 when the call passes no such argument
+   */
+  private static int callArgIndexForFormal(TacInstruction ins, int formalIndex) {
+    int instancePosition = formalIndex + 1;
+    if (instancePosition < ins.args.size()) {
+      return instancePosition;
+    }
+    if (formalIndex < ins.args.size()) {
+      return formalIndex;
+    }
+    return -1;
+  }
+
+  /**
    * Project a callee's summary through this call site's binding.
    *
    * <p>The binding is computed from the call site's own tainted arguments: each tainted user
@@ -5524,11 +5628,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     java.util.Map<Integer, Integer> binding = new java.util.LinkedHashMap<>();
     int maxParams = Math.max(0, ins.args.size() - 1);
     for (int i = 0; i < maxParams; i++) {
-      int callArgIdx = i + 1;
-      if (callArgIdx >= ins.args.size()) {
-        callArgIdx = i;
-      }
-      if (callArgIdx >= ins.args.size()) break;
+      int callArgIdx = callArgIndexForFormal(ins, i);
+      if (callArgIdx < 0) break;
       if (!(ins.args.get(callArgIdx) instanceof TacOperand.TacVar av)) continue;
       if (!taintedVars.containsKey(av)) continue;
       binding.put(i, i);
@@ -5777,25 +5878,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // for both instance and static).
     int maxParams = Math.max(0, ins.args.size() - 1);
     for (int i = 0; i < maxParams; i++) {
-      int callArgIdx = i + 1;
-      // The +1 offset convention
-      // ({@code callArgIdx = i + 1}) is
-      // correct for instance methods
-      // (where args[0] is the receiver)
-      // but wrong for static methods
-      // (where args[0] is the first
-      // user arg and there's no
-      // receiver). Apply the same
-      // two-tier offset fallback: if
-      // {@code i + 1} is out of bounds,
-      // try {@code i} directly (static
-      // method convention).
-      if (callArgIdx >= ins.args.size()) {
-        if (i < ins.args.size()) {
-          callArgIdx = i;
-        } else {
-          break;
-        }
+      int callArgIdx = callArgIndexForFormal(ins, i);
+      if (callArgIdx < 0) {
+        break;
       }
       TacOperand arg = ins.args.get(callArgIdx);
       if (!(arg instanceof TacOperand.TacVar av)) continue;
@@ -5978,6 +6063,95 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       v2TraceHandle.put(resVar, summaryHandle);
       appendPassthroughStepsForSummary(fold, calleeSummary, ins);
       taintPaths.put(resVar, java.util.Collections.unmodifiableList(fold));
+    }
+    // The BY-REFERENCE arguments.
+    //
+    // A by-reference argument (C#'s `out` / `ref`) is written by the callee and read by the
+    // caller, so the value that crosses the call boundary travels through the FORMAL rather than
+    // through a result. The call site's own list says which argument is by reference and which
+    // variable it is written back into; the callee's summary says what the callee wrote into that
+    // formal. The two meet here, by index.
+    //
+    // Without this, the value the callee wrote back was lost at the call boundary: the caller's
+    // variable was a variable nothing writes, which is indistinguishable from a clean one, and a
+    // sink that consumed it was never reported.
+    java.util.List<TacOperand> refOuts = ins.knownRefOutDests();
+    if (!refOuts.isEmpty()) {
+      for (int formal = 0; formal < maxParams; formal++) {
+        int callArgIdx = callArgIndexForFormal(ins, formal);
+        if (callArgIdx < 0) {
+          break;
+        }
+        if (callArgIdx >= refOuts.size()) {
+          continue;
+        }
+        if (!(refOuts.get(callArgIdx) instanceof TacOperand.TacVar outVar)) {
+          continue;
+        }
+        if (taintedVars.containsKey(outVar)) {
+          continue;
+        }
+        // The written taint either flowed through one of the callee's formals, or came from the
+        // callee's own source. The projection has already dropped the first kind when none of
+        // those formals is tainted at THIS call site, so a surviving cause means the write is
+        // live here.
+        java.util.Set<Integer> causes = calleeSummary.paramWriteCausesAt(formal);
+        String outLabel = null;
+        if (!causes.isEmpty()) {
+          for (Integer cause : causes) {
+            int causeArgIdx = callArgIndexForFormal(ins, cause);
+            if (causeArgIdx < 0 || causeArgIdx >= ins.args.size()) {
+              continue;
+            }
+            if (!(ins.args.get(causeArgIdx) instanceof TacOperand.TacVar causeVar)) {
+              continue;
+            }
+            String causeLabel = taintedVars.get(causeVar);
+            if (causeLabel != null) {
+              outLabel = causeLabel;
+              break;
+            }
+          }
+        } else {
+          Operation.TaintPropagate writeOp =
+              calleeSummary.paramWriteOpsAt(formal).stream()
+                  .filter(op -> op instanceof Operation.TaintPropagate)
+                  .map(op -> (Operation.TaintPropagate) op)
+                  .findFirst()
+                  .orElse(null);
+          if (writeOp != null) {
+            String origin = taintOriginOf(writeOp.origin());
+            outLabel = origin != null ? origin : "callee:" + calleeSig;
+          }
+        }
+        if (outLabel == null) {
+          continue;
+        }
+        taintedVars.put(outVar, outLabel);
+        List<FlowStep> fold = new ArrayList<>();
+        fold.add(
+            new FlowStep(
+                "summary-fold",
+                "",
+                ins.line,
+                ins.column,
+                calleeSig,
+                "call " + calleeSig + " writes back into arg#" + formal));
+        int summaryHandle =
+            v2Builder.addSummaryFold(
+                TraceNode.Op.SUMMARY_TAINT_PROPAGATE,
+                calleeSig,
+                formal,
+                List.of(new OperandRef.Var(outVar.name(), 0)),
+                -1, // orphan parent -- the cross-fn summary itself is the source
+                "call " + calleeSig + " writes back into arg#" + formal,
+                "",
+                ins.line,
+                ins.column,
+                calleeSig);
+        v2TraceHandle.put(outVar, summaryHandle);
+        taintPaths.put(outVar, java.util.Collections.unmodifiableList(fold));
+      }
     }
     // Conservative caller-arg :
     // dest taint passthrough. The
@@ -6721,6 +6895,67 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             break;
           }
         }
+      }
+    }
+    // 1c. The taint this function writes INTO a formal parameter.
+    //
+    //     A by-reference argument (C#'s `out` / `ref`) is written by the callee
+    //     and read by the caller, so the value that crosses the call boundary
+    //     travels through the FORMAL rather than through a result. Nothing else
+    //     in this summary says that, so a caller that passed an `out` variable
+    //     had no way to learn that the callee wrote tainted data into it: the
+    //     variable stayed a variable nothing writes, and a sink that consumed
+    //     it was never reported.
+    //
+    //     Which formal the written taint flows through is the same question
+    //     `returnTaintCauses` answers for the return value, and it is answered
+    //     the same way: by matching the written value's label against the
+    //     formals' own labels. A write whose taint came from no formal (the
+    //     callee read a source of its own) has no cause, and it fires at every
+    //     call site -- which is the "nothing to narrow it by" case.
+    for (ParamWrite pw : paramWrites) {
+      int target = pw.formalIndex();
+      if (target < 0 || target >= params.size()) {
+        continue;
+      }
+      String writtenLabel = pw.label();
+      int cause = -1;
+      // The formal that is being WRITTEN is not searched here. Once the write has happened, that
+      // formal carries the label of what was written into it, so a match against it says nothing
+      // about where the taint came from -- it says only that a label was copied there. Searching
+      // it would turn every write of the callee's own taint into "the taint flows through this
+      // formal", and the call site would then drop it unless it happened to feed that formal with
+      // taint of its own -- which is exactly the case where the write-back is NOT the taint's
+      // origin.
+      for (int i = 0; i < params.size(); i++) {
+        if (i == target) {
+          continue;
+        }
+        String paramLabel = taintedVars.get(params.get(i));
+        if (paramLabel != null && paramLabel.equals(writtenLabel)) {
+          cause = i;
+          break;
+        }
+      }
+      if (cause < 0) {
+        // The formal's own contribution, asked with the label it carried BEFORE the write. A
+        // `ref` parameter whose value the callee derived from what it was given carries its own
+        // taint back to the caller, so the taint flows through THIS formal and the write-back
+        // fires exactly where that formal is tainted.
+        String before = pw.targetLabelBefore();
+        if (before != null && before.equals(writtenLabel)) {
+          cause = target;
+        }
+      }
+      if (cause >= 0) {
+        b.recordParamWriteCause(target, cause);
+      } else {
+        b.recordParamWriteOp(
+            target,
+            new Operation.TaintPropagate(
+                "out:" + params.get(target).name() + " in " + fn.signature(),
+                1.0,
+                taintOriginOf(writtenLabel)));
       }
     }
     // 2. For each observed sink call, record

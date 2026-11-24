@@ -894,6 +894,24 @@
                              result would pass the first case and be a false positive on
                              every Go program whose error is a constant). -->
                         <include>org/plumb/dfa/taint/GoErrorExitTaintTest.java</include>
+                        <!-- A BY-REFERENCE argument (C#'s `out` / `ref`) is written by the
+                             callee and read by the caller, so the value that crosses the
+                             call boundary travels through the FORMAL rather than through a
+                             result. The call's one destination is its result, so a variable
+                             the callee wrote back had nowhere to go, and a variable nothing
+                             writes is indistinguishable from a clean one. The test pins both
+                             directions: the taint a callee writes into its out parameter
+                             reaches the caller's variable (including when the taint came
+                             from the callee's OWN source, which is the case with no
+                             argument to blame it on), and a clean value written into the
+                             same parameter leaves the caller's variable clean. -->
+                        <include>org/plumb/dfa/taint/ByRefWriteBackTaintTest.java</include>
+                        <!-- The summary's write-back facts: the taint a function writes INTO a
+                             formal parameter, and the formal it flows through. The copy
+                             points are where a summary loses a fact, and a copy without the
+                             write-back keeps the taint at every call site, which is a false
+                             positive rather than a missed one. -->
+                        <include>org/plumb/dfa/summary/ParamWriteFactTest.java</include>
                         <!-- The iteration protocol has a different NAME in every language
                              that has one, and the engine recognises each of them. The
                              list has to name these classes: a test that is not on the

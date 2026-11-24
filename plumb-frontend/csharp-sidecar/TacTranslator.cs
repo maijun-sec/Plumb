@@ -2825,6 +2825,19 @@ internal sealed partial class TacTranslator
         }
 
         var arguments = new List<Operand>();
+        // The BY-REFERENCE arguments, parallel to `arguments`.
+        //
+        // A C# `out` / `ref` argument is written by the callee and read by the caller, so the
+        // value that crosses the call boundary travels through the formal parameter rather than
+        // through a result. The TAC's CALL has no place for that on its own, so the list says
+        // which argument is by reference and which variable it is written back into.
+        //
+        // The list is PARALLEL to the argument list: a null entry means "this argument is not
+        // by reference", and the positions are kept so the two lists cannot drift apart.
+        //
+        // `in` is NOT here: an `in` parameter is read-only, so nothing is written back. The
+        // source's `RefOrOutKeyword` is null for an `in` argument, so it never reaches this list.
+        var refOutDests = new List<Operand?>();
 
         // THE RECEIVER SLOT IS ALWAYS args[0]. The TAC's call convention is
         // "args[0] is the receiver, args[1..] are the actual args", and the
@@ -2858,11 +2871,13 @@ internal sealed partial class TacTranslator
             if (receiver is not null)
             {
                 arguments.Add(receiver);
+                refOutDests.Add(null);
             }
         }
         else if (method.IsStatic && !reducedExtension)
         {
             arguments.Add(TypePlaceholder(method.ContainingType));
+            refOutDests.Add(null);
         }
 
         foreach (var argument in invocation.ArgumentList.Arguments)
@@ -2875,7 +2890,14 @@ internal sealed partial class TacTranslator
                 operand = unknown;
             }
             arguments.Add(operand);
+            // `out` and `ref` are written back into the argument's variable. `in` is not: it is
+            // read-only, and the source writes no keyword for it.
+            refOutDests.Add(IsByReferenceArgument(argument) ? operand : null);
         }
+
+        // A call that passes NO argument by reference sends no list at all: the wire field is
+        // absent rather than a list of nulls.
+        var byRefDests = refOutDests.Exists(dest => dest is not null) ? refOutDests : null;
 
         // An EXTENSION method's receiver is its first argument, and the reduced
         // form's parameter count is one less. The reduced signature is what the
@@ -2885,15 +2907,38 @@ internal sealed partial class TacTranslator
             var reduced = method.ReducedFrom;
             var extensionTemp = NewTemp();
             Emit(InstructionKind.CALL, dest: extensionTemp, calleeSig: Signature.For(reduced),
-                args: arguments, node: invocation);
+                args: arguments, refOutDests: byRefDests, node: invocation);
             return extensionTemp;
         }
 
         var calleeSignature = Signature.For(method);
         var result = NewTemp();
         Emit(InstructionKind.CALL, dest: result, calleeSig: calleeSignature, args: arguments,
-            node: invocation);
+            refOutDests: byRefDests, node: invocation);
         return result;
+    }
+
+    /// <summary>
+    /// Whether the argument is passed by reference and written back into.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>out</c> and <c>ref</c> are written back into the argument's variable; <c>in</c> is
+    /// not, because an <c>in</c> parameter is read-only. The source writes no
+    /// <c>RefOrOutKeyword</c> for an <c>in</c> argument, so it never reaches this method.
+    /// </para>
+    /// <para>
+    /// The keyword is the CALLER's spelling of the argument, and that is the right thing to
+    /// read here: it says "this argument is a variable the callee writes into". The callee's
+    /// own parameter list says the same thing from the other side.
+    /// </para>
+    /// </remarks>
+    /// <param name="argument">the argument syntax</param>
+    /// <returns>true when the argument is written back into</returns>
+    private static bool IsByReferenceArgument(ArgumentSyntax argument)
+    {
+        var keyword = argument.RefOrOutKeyword;
+        return keyword.IsKind(SyntaxKind.OutKeyword) || keyword.IsKind(SyntaxKind.RefKeyword);
     }
 
     private Operand? TranslateObjectCreation(ObjectCreationExpressionSyntax creation, bool store)
@@ -4641,6 +4686,7 @@ internal sealed partial class TacTranslator
         string? effect = null,
         string? ownerType = null,
         List<Operand?>? resultDests = null,
+        List<Operand?>? refOutDests = null,
         SyntaxNode? node = null)
     {
         var instruction = new Instruction
@@ -4662,6 +4708,7 @@ internal sealed partial class TacTranslator
             Effect = effect,
             OwnerType = ownerType,
             ResultDests = resultDests,
+            RefOutDests = refOutDests,
         };
 
         if (node is not null)

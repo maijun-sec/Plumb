@@ -162,6 +162,28 @@ public final class FunctionSummary {
   // a function's second result may flow through a different formal than the taint in
   // its first.
   private final Map<Integer, Set<Integer>> resultTaintCauses;
+  // The taint this function WRITES INTO each formal parameter, and the formals that
+  // taint flows through.
+  //
+  // A by-reference argument (C#'s `out` / `ref`) is written by the callee and read by
+  // the caller, so the value that crosses the call boundary travels through the FORMAL,
+  // not through a result. Nothing else in this summary can say that: `paramOps` says
+  // what the function does with a parameter's value, `resultOps` says what comes back
+  // through a result, and neither of them says "this function LEAVES this taint in this
+  // parameter".
+  //
+  // So a caller that passed an `out` variable had no way to learn that the callee
+  // wrote tainted data into it: the variable stayed a variable nothing writes, which is
+  // indistinguishable from a clean one, and a sink that consumed it was never reported.
+  //
+  // The key is the formal parameter's index, in the same index space as `paramOps`.
+  private final Map<Integer, Set<Operation>> paramWriteOps;
+  // The formal parameters whose taint is written into each formal parameter. Same
+  // question as {@link #returnTaintCauses}, asked per parameter: the taint written
+  // into an `out` parameter may flow through a different formal than the taint in the
+  // return value, and a caller cannot narrow the two separately unless the summary says
+  // which is which.
+  private final Map<Integer, Set<Integer>> paramWriteCauses;
 
   private FunctionSummary(
       String signature,
@@ -185,6 +207,8 @@ public final class FunctionSummary {
         fieldOps,
         Set.of(),
         Map.of(),
+        Map.of(),
+        Map.of(),
         Map.of());
   }
 
@@ -201,7 +225,9 @@ public final class FunctionSummary {
       List<FieldOp> fieldOps,
       Set<Integer> returnTaintCauses,
       Map<Integer, Set<Operation>> resultOps,
-      Map<Integer, Set<Integer>> resultTaintCauses) {
+      Map<Integer, Set<Integer>> resultTaintCauses,
+      Map<Integer, Set<Operation>> paramWriteOps,
+      Map<Integer, Set<Integer>> paramWriteCauses) {
     this.signature = signature;
     // Defensive: wrap in unmodifiable views so
     // the builder can hand out the underlying
@@ -250,6 +276,25 @@ public final class FunctionSummary {
       }
     }
     this.resultTaintCauses = Collections.unmodifiableMap(unmodResultCauses);
+    Map<Integer, Set<Operation>> unmodWriteOps = new HashMap<>();
+    if (paramWriteOps != null) {
+      for (Map.Entry<Integer, Set<Operation>> e : paramWriteOps.entrySet()) {
+        unmodWriteOps.put(
+            e.getKey(), Collections.unmodifiableSet(new LinkedHashSet<>(e.getValue())));
+      }
+    }
+    this.paramWriteOps = Collections.unmodifiableMap(unmodWriteOps);
+    Map<Integer, Set<Integer>> unmodWriteCauses = new HashMap<>();
+    if (paramWriteCauses != null) {
+      for (Map.Entry<Integer, Set<Integer>> e : paramWriteCauses.entrySet()) {
+        unmodWriteCauses.put(
+            e.getKey(),
+            e.getValue() == null || e.getValue().isEmpty()
+                ? Set.of()
+                : Collections.unmodifiableSet(new LinkedHashSet<>(e.getValue())));
+      }
+    }
+    this.paramWriteCauses = Collections.unmodifiableMap(unmodWriteCauses);
   }
 
   /**
@@ -293,6 +338,9 @@ public final class FunctionSummary {
     // `returnOps` instead of here.
     private final Map<Integer, Set<Operation>> resultOps = new HashMap<>();
     private final Map<Integer, Set<Integer>> resultTaintCauses = new HashMap<>();
+    // The taint written INTO each formal parameter, and the formals it flows through.
+    private final Map<Integer, Set<Operation>> paramWriteOps = new HashMap<>();
+    private final Map<Integer, Set<Integer>> paramWriteCauses = new HashMap<>();
 
     public Builder(String signature) {
       this.signature = Objects.requireNonNull(signature, "signature");
@@ -475,6 +523,42 @@ public final class FunctionSummary {
       return this;
     }
 
+    /**
+     * Record the taint this function writes INTO the formal parameter at the given index.
+     *
+     * <p>The write is a fact about the PARAMETER, not about a result: a by-reference argument (C#'s
+     * {@code out} / {@code ref}) is written by the callee and read by the caller, so the value that
+     * crosses the call boundary travels through the formal.
+     *
+     * @param paramIndex the formal parameter the taint is written into
+     * @param op the operation describing the write
+     * @return this builder
+     */
+    public Builder recordParamWriteOp(int paramIndex, Operation op) {
+      if (op == null || paramIndex < 0) return this;
+      paramWriteOps.computeIfAbsent(paramIndex, k -> new LinkedHashSet<>()).add(op);
+      return this;
+    }
+
+    /**
+     * Record that the taint written into the formal parameter at {@code targetIndex} flows through
+     * the formal parameter at {@code causeIndex}.
+     *
+     * <p>Same question as {@link #recordReturnTaintCause}, asked about a parameter: the taint
+     * written into an {@code out} parameter may flow through a different formal than the taint in
+     * the return value, and a caller cannot narrow the two separately unless the summary says which
+     * is which.
+     *
+     * @param targetIndex the formal parameter the taint is written into
+     * @param causeIndex the formal parameter the written taint flows through
+     * @return this builder
+     */
+    public Builder recordParamWriteCause(int targetIndex, int causeIndex) {
+      if (targetIndex < 0 || causeIndex < 0) return this;
+      paramWriteCauses.computeIfAbsent(targetIndex, k -> new LinkedHashSet<>()).add(causeIndex);
+      return this;
+    }
+
     public FunctionSummary build() {
       return new FunctionSummary(
           signature,
@@ -489,7 +573,9 @@ public final class FunctionSummary {
           fieldOps,
           returnTaintCauses,
           resultOps,
-          resultTaintCauses);
+          resultTaintCauses,
+          paramWriteOps,
+          paramWriteCauses);
     }
   }
 
@@ -521,6 +607,37 @@ public final class FunctionSummary {
     }
     Set<Operation> ops = resultOps.get(resultIndex);
     return ops == null ? Set.of() : ops;
+  }
+
+  /**
+   * The operations describing the taint this function writes INTO the formal parameter at the given
+   * index.
+   *
+   * <p>A by-reference argument (C#'s {@code out} / {@code ref}) is written by the callee and read
+   * by the caller, so the value that crosses the call boundary travels through the formal rather
+   * than through a result. This is the only place in the summary that says so.
+   *
+   * @param paramIndex the zero-based index of the formal parameter
+   * @return the operations describing the write, or an empty set when there are none
+   */
+  public Set<Operation> paramWriteOpsAt(int paramIndex) {
+    Set<Operation> ops = paramWriteOps.get(paramIndex);
+    return ops == null ? Set.of() : ops;
+  }
+
+  /**
+   * The formal parameters whose taint is written INTO the formal parameter at the given index.
+   *
+   * <p>An EMPTY set means the written taint did not come from a parameter -- the function read a
+   * global, or a source of its own. That is the "fires at every call site" case, and the projection
+   * must keep it: there is nothing to narrow it by.
+   *
+   * @param paramIndex the zero-based index of the formal parameter
+   * @return the formal parameter indices the written taint flows through
+   */
+  public Set<Integer> paramWriteCausesAt(int paramIndex) {
+    Set<Integer> causes = paramWriteCauses.get(paramIndex);
+    return causes == null ? Set.of() : causes;
   }
 
   /**
@@ -617,7 +734,12 @@ public final class FunctionSummary {
         && returnOps.isEmpty()
         && stringOps.isEmpty()
         && fieldOps.isEmpty()
-        && !hasUnmodelledBehavior;
+        && !hasUnmodelledBehavior
+        // The taint written into a formal parameter is a fact too. A function whose only recorded
+        // effect is "this writes tainted data into its second parameter" carries something, and
+        // calling it trivial would make the lookup prefer another function's summary over it.
+        && paramWriteOps.isEmpty()
+        && paramWriteCauses.isEmpty();
   }
 
   /**
@@ -631,7 +753,15 @@ public final class FunctionSummary {
    * @return true when there is nothing here worth keeping
    */
   private boolean carriesNoFact() {
-    return isTrivial() && !hasBody && !mayReturnArgument && !claimsBody;
+    return isTrivial()
+        && !hasBody
+        && !mayReturnArgument
+        && !claimsBody
+        // The taint written into a formal parameter is a fact too. A summary whose only
+        // fact is "this function writes tainted data into its second parameter" would
+        // otherwise be dropped by merge(), and the write would be lost.
+        && paramWriteOps.isEmpty()
+        && paramWriteCauses.isEmpty();
   }
 
   /**
@@ -687,6 +817,19 @@ public final class FunctionSummary {
     for (Map.Entry<Integer, Set<Integer>> e : resultTaintCauses.entrySet()) {
       for (Integer cause : e.getValue()) {
         b.recordResultTaintCause(e.getKey(), cause);
+      }
+    }
+    // The taint written into a formal parameter is preserved through project(): the Operation
+    // filter says which operations a consumer cares about, not which parameters the written taint
+    // flows through. Narrowing that would change the summary's meaning.
+    for (Map.Entry<Integer, Set<Operation>> e : paramWriteOps.entrySet()) {
+      for (Operation op : e.getValue()) {
+        if (filter.test(op)) b.recordParamWriteOp(e.getKey(), op);
+      }
+    }
+    for (Map.Entry<Integer, Set<Integer>> e : paramWriteCauses.entrySet()) {
+      for (Integer cause : e.getValue()) {
+        b.recordParamWriteCause(e.getKey(), cause);
       }
     }
     if (hasUnmodelledBehavior && filter.test(new Operation.HasUnmodelledBehavior("any"))) {
@@ -788,6 +931,19 @@ public final class FunctionSummary {
         b.recordResultTaintCause(entry.getKey().intValue(), cause.intValue());
       }
     }
+    // The taint written into a formal parameter is a fact of the same kind as the return
+    // taint's causes, and the copy has to carry it for the same reason: a copy without it keeps
+    // the write at EVERY call site, including the ones that pass nothing tainted.
+    for (Map.Entry<Integer, Set<Operation>> entry : paramWriteOps.entrySet()) {
+      for (Operation op : entry.getValue()) {
+        b.recordParamWriteOp(entry.getKey().intValue(), op);
+      }
+    }
+    for (Map.Entry<Integer, Set<Integer>> entry : paramWriteCauses.entrySet()) {
+      for (Integer cause : entry.getValue()) {
+        b.recordParamWriteCause(entry.getKey().intValue(), cause.intValue());
+      }
+    }
     return b.build();
   }
 
@@ -867,6 +1023,26 @@ public final class FunctionSummary {
       }
       for (Operation op : e.getValue()) b.recordResultOp(e.getKey(), op);
       for (Integer cause : causes) b.recordResultTaintCause(e.getKey(), cause);
+    }
+    // The taint written INTO a formal parameter follows the same rule, each against its own
+    // causes: the taint written into an `out` parameter may flow through a different formal than
+    // the taint in the return value, so the two are narrowed separately.
+    //
+    // The targets are the union of the two maps' keys: a write whose taint came from a
+    // parameter is recorded as a CAUSE only, and a write whose taint came from the callee's own
+    // source is recorded as an OP only. Iterating one map would drop half of them.
+    Set<Integer> writeTargets = new java.util.LinkedHashSet<>(paramWriteOps.keySet());
+    writeTargets.addAll(paramWriteCauses.keySet());
+    for (Integer target : writeTargets) {
+      Set<Integer> causes = paramWriteCauses.getOrDefault(target, Set.of());
+      boolean survives = causes.isEmpty() || !java.util.Collections.disjoint(causes, liveFormals);
+      if (!survives) {
+        continue;
+      }
+      for (Operation op : paramWriteOps.getOrDefault(target, Set.of())) {
+        b.recordParamWriteOp(target, op);
+      }
+      for (Integer cause : causes) b.recordParamWriteCause(target, cause);
     }
     if (hasUnmodelledBehavior) b.markUnmodelled();
     if (hasBody) b.markHasBody();
@@ -956,6 +1132,27 @@ public final class FunctionSummary {
     for (Map.Entry<Integer, Set<Integer>> e : other.resultTaintCauses.entrySet()) {
       for (Integer cause : e.getValue()) {
         b.recordResultTaintCause(e.getKey(), cause);
+      }
+    }
+    // The taint written into a formal parameter is unioned, like every other fact here.
+    for (Map.Entry<Integer, Set<Operation>> e : paramWriteOps.entrySet()) {
+      for (Operation op : e.getValue()) {
+        b.recordParamWriteOp(e.getKey(), op);
+      }
+    }
+    for (Map.Entry<Integer, Set<Operation>> e : other.paramWriteOps.entrySet()) {
+      for (Operation op : e.getValue()) {
+        b.recordParamWriteOp(e.getKey(), op);
+      }
+    }
+    for (Map.Entry<Integer, Set<Integer>> e : paramWriteCauses.entrySet()) {
+      for (Integer cause : e.getValue()) {
+        b.recordParamWriteCause(e.getKey(), cause);
+      }
+    }
+    for (Map.Entry<Integer, Set<Integer>> e : other.paramWriteCauses.entrySet()) {
+      for (Integer cause : e.getValue()) {
+        b.recordParamWriteCause(e.getKey(), cause);
       }
     }
     if (hasUnmodelledBehavior || other.hasUnmodelledBehavior) {
