@@ -29,7 +29,8 @@ The claims checked, all derived from the source:
   3. The naming-convention table pairs each shape with an example that
      is BOTH real and of that shape.
   4. The DFA checkers the document lists exist, and the ones it says
-     are NOT registered really are not registered.
+     are NOT registered really are registered only under a switch that
+     is off by default -- and the document still says so.
   5. The names the document says do not exist really do not exist.
   6. The API the document's code snippets use really exists -- the
      method names, the field names, the type names -- and every call a
@@ -103,6 +104,18 @@ NOT_REGISTERED = [
     "ServletAtomicityDfaChecker",
 ]
 
+# The wording a document uses to say a checker is NOT registered. Both
+# languages have to be accepted: the Chinese tree is the same document,
+# and a gate that only knows the English wording would hold the two
+# trees to two different standards.
+NOT_REGISTERED_WORDING = (r"not\s*\**\s*(?:ever\s+|never\s+)?registered|"
+                           r"never\s+registered|unregistered|"
+                           r"不注册|未注册|没有注册|故意留空")
+
+# The wording a document uses to say the branch adds nothing at all.
+EMPTY_BRANCH_WORDING = (r"branch\w*\s+(?:are\s+|is\s+)?(?:deliberately\s+)?\**empty"
+                         r"|分支[^。\n]{0,8}留空")
+
 # The names the document says do not exist.
 MUST_NOT_EXIST = [
     ("plumb-dfa/src/main/java/org/plumb/dfa/checkers/controlflow/UninitNonnullDfaChecker.java",
@@ -162,6 +175,66 @@ def note(msg):
     print(msg)
 
 
+def code_only(text):
+    """The source without its comments.
+
+    A commented-out registration registers nothing, so a check that
+    reads the raw text would report a checker the engine never builds.
+    The comment lines keep their line breaks, so the offsets of the code
+    around them do not move.
+    """
+    out = []
+    in_block = False
+    for line in text.splitlines(True):
+        stripped = line.strip()
+        if in_block:
+            if "*/" in stripped:
+                in_block = False
+            out.append("\n")
+            continue
+        if stripped.startswith("//") or stripped.startswith("/*"):
+            if stripped.startswith("/*") and "*/" not in stripped:
+                in_block = True
+            out.append("\n")
+            continue
+        out.append(line)
+    return "".join(out)
+
+
+def guarding_switch(code, index):
+    """The config switch that guards the registration at `index`.
+
+    None when the registration is not guarded, or when the guard does
+    not control it: only whitespace may sit between the `if` and the
+    `checkers.add` call.
+    """
+    head = code[:index]
+    guards = list(re.finditer(r"if\s*\(\s*config\.(\w+)\s*\)", head))
+    if not guards:
+        return None
+    guard = guards[-1]
+    between = head[guard.end():]
+    between = re.sub(r"//[^\n]*", "", between)
+    between = re.sub(r"/\*.*?\*/", "", between, flags=re.S)
+    if ";" in between or "{" in between or "}" in between:
+        return None
+    return guard.group(1)
+
+
+def config_default(cfg, switch):
+    """The default value of a `public boolean <switch>` field.
+
+    True, False, or None when the field is not declared with a literal
+    default -- which is a fact this check cannot read, not a fact that
+    the switch is on.
+    """
+    m = re.search(r"^\s*public\s+boolean\s+%s\s*=\s*(true|false)\s*;"
+                  % re.escape(switch), cfg, re.M)
+    if not m:
+        return None
+    return m.group(1) == "true"
+
+
 def read(path):
     return path.read_text(encoding="utf-8", errors="replace")
 
@@ -205,8 +278,9 @@ def main():
 def check_document(doc, path):
     """Every check, against ONE document. Returns the failure list."""
     failures = []
-    name = path.name
-    prefix = "%s: " % name
+    # The two trees have the same FILE NAME, so the file name alone
+    # cannot say which one drifted. The path can.
+    prefix = "%s: " % path.relative_to(REPO).as_posix()
 
     # (1) The class names the document names must exist.
     #
@@ -413,16 +487,105 @@ def check_document(doc, path):
             failures.append(prefix +
                 "the document points at %s, but that file does not exist" % rel)
     runner = REPO / "plumb-main" / "src" / "main" / "java" / "org" / "plumb" / "main" / "ScanRunner.java"
+    config = REPO / "plumb-main" / "src" / "main" / "java" / "org" / "plumb" / "main" / "ScanConfig.java"
+    cfg = read(config) if config.is_file() else ""
+    registrations = {}
     if runner.is_file():
         body = read(runner)
+        code = code_only(body)
         # The registration is an `if (...) {` block that adds the checker.
+        #
+        # "Not registered" is a claim about the DEFAULT run, so the
+        # check has to read the GUARD and not just the `checkers.add`
+        # call: a checker that is added under a switch which defaults
+        # to false is not registered by default, and the document says
+        # exactly that.
+        #
+        # A checker added with no guard at all is registered in every
+        # run, and a checker added under a switch that defaults to true
+        # is registered in every run too. Both contradict the document.
         for cls in NOT_REGISTERED:
-            if re.search(r"checkers\.add\(new [^)]*%s" % re.escape(cls), body):
-                failures.append(prefix +
-                    "the document says %s is not registered, but "
-                    "ScanRunner adds it" % cls)
+            sites = list(re.finditer(
+                r"checkers\.add\(new [^)]*%s" % re.escape(cls), code))
+            registrations[cls] = len(sites)
+            for site in sites:
+                switch = guarding_switch(code, site.start())
+                if switch is None:
+                    failures.append(prefix +
+                        "the document says %s is not registered, but "
+                        "ScanRunner adds it with no switch to turn it off"
+                        % cls)
+                    continue
+                default = config_default(cfg, switch)
+                if default is None:
+                    failures.append(prefix +
+                        "the document says %s is not registered by default, "
+                        "but the switch that registers it (%s) has no "
+                        "readable default in ScanConfig" % (cls, switch))
+                elif default:
+                    failures.append(prefix +
+                        "the document says %s is not registered by default, "
+                        "but the switch that registers it (%s) defaults to "
+                        "true" % (cls, switch))
+        note("checked %d 'not registered' checker(s) against the runner"
+             % len(NOT_REGISTERED))
     else:
         failures.append(prefix + "%s does not exist" % runner)
+    # (3a) The document's own claim about those checkers.
+    #
+    #      The code side above asks "does the code do what the document
+    #      says". This side asks the other question: does the document
+    #      still SAY it? A document that stopped saying the checker is
+    #      not registered by default has lost the warning, and one that
+    #      now says it IS registered is simply wrong.
+    #
+    #      Every paragraph that names the checker and talks about its
+    #      registration has to carry the negation.
+    for cls in NOT_REGISTERED:
+        mentioned = 0
+        denied = False
+        for raw in re.split(r"\n\s*\n", doc):
+            paragraph = re.sub(r"\s+", " ", raw)
+            if cls not in paragraph:
+                continue
+            mentioned += 1
+            if re.search(NOT_REGISTERED_WORDING, paragraph, re.I):
+                denied = True
+            if not re.search(r"regist|注册", paragraph, re.I):
+                continue
+            if not re.search(NOT_REGISTERED_WORDING, paragraph, re.I):
+                failures.append(prefix +
+                    "the document says %s is registered, but the engine "
+                    "registers it only under a switch that defaults to false"
+                    % cls)
+                continue
+            # A document that calls the branch EMPTY is claiming the
+            # checker is not built at all -- so the runner must not add
+            # it, not even under a switch.
+            if re.search(EMPTY_BRANCH_WORDING, paragraph, re.I):
+                if registrations.get(cls):
+                    failures.append(prefix +
+                        "the document says the %s branch is empty, but "
+                        "ScanRunner adds the checker" % cls)
+                continue
+            # A document that names the switch has to name one that is
+            # off by default.
+            for switch in re.findall(r"config\.(run\w+)", paragraph):
+                default = config_default(cfg, switch)
+                if default is not False:
+                    failures.append(prefix +
+                        "the document says %s is not registered by default, "
+                        "but the switch it names (%s) does not default to "
+                        "false" % (cls, switch))
+        if not mentioned:
+            failures.append(prefix +
+                "the document no longer mentions %s, so the note that it is "
+                "not registered by default has been lost" % cls)
+        elif not denied:
+            failures.append(prefix +
+                "the document no longer says %s is not registered by default"
+                % cls)
+    note("checked %d unregistered wording claim(s)" % len(NOT_REGISTERED))
     # (3c) The switch the document names has to be the one the loader
     #      reads. The document says the per-rule switch is
     #      `checks.<rule>: {enabled: ...}`; the loader has to agree.
@@ -501,37 +664,16 @@ def check_document(doc, path):
          % (len(DFA_CHECKERS), len(NOT_REGISTERED)))
 
     # (3a) The document must SAY the two race checkers are not
-    #      registered.
+    #      registered by default.
     #
     #      The code check above is one-directional: it catches a
-    #      checker that IS registered. It cannot catch a document that
-    #      claims the opposite. So the wording is checked too -- and the
-    #      wording has to be a DENIAL.
-    for cls in NOT_REGISTERED:
-        # The document must deny their registration, and it must not
-        # claim it anywhere either. A document that says "not
-        # registered" in one paragraph and "and registered" in another
-        # is worse than one that says nothing.
-        denied = False
-        claimed = False
-        for raw in re.split(r"\n\s*\n", doc):
-            if cls not in raw:
-                continue
-            paragraph = re.sub(r"\s+", " ", raw)
-            if re.search(r"not\s*\*\*?\s*registered|unregistered|empty|"
-                         r"不注册|未注册|故意留空", paragraph, re.I):
-                denied = True
-            if re.search(r"\*\*registered\*\*|are\s+registered|"
-                         r"已注册|会被注册", paragraph, re.I):
-                claimed = True
-        if not denied:
-            failures.append(prefix +
-                "the document no longer says %s is unregistered" % cls)
-        if claimed:
-            failures.append(prefix +
-                "the document claims %s is registered, but ScanRunner does "
-                "not add it" % cls)
-    note("checked %d unregistered wording claim(s)" % len(NOT_REGISTERED))
+    #      checker that IS registered in every run. It cannot catch a
+    #      document that claims the opposite. So the wording is checked
+    #      too -- and the wording has to be a DENIAL.
+    #
+    #      The wording check above (3a) covers both halves of this: the
+    #      denial has to be there, and a paragraph must not claim the
+    #      opposite.
 
     # (3b) The document says the `SummaryApplier` does NOT dispatch on
     #      `Operation` variants. That is a claim about the code, and the

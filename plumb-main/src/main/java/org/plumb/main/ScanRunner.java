@@ -2433,10 +2433,14 @@ public final class ScanRunner {
       checkers.add(new org.plumb.dfa.checkers.controlflow.CollectionSelfReferenceChecker());
     if (config.runUncaughtExceptionPropagator)
       checkers.add(new org.plumb.dfa.checkers.controlflow.UncaughtExceptionPropagator());
-    // These two are catalogued in checkers.yaml and were never built: the
-    // flag was read, the checker was not added. A checker that is configured
-    // but never built is the same defect as a family with no watcher -- the
-    // defect class cannot produce a finding at all.
+    // These two are the DFA half of a defect class that plumb-style also
+    // covers with an AST checker (SingletonRaceCheck / ServletAtomicityCheck
+    // in org.plumb.style.concurrency). The AST version has the better
+    // precision, so the DFA version is off by default: each checker is added
+    // only under its own switch, and both switches default to false in
+    // ScanConfig. A checker that is configured but never built is the same
+    // defect as a family with no watcher -- so the wiring is here, and the
+    // switch decides whether it runs.
     if (config.runSingletonRace)
       checkers.add(new org.plumb.dfa.checkers.controlflow.SingletonRaceDfaChecker());
     if (config.runServletAtomicity)
@@ -2454,23 +2458,9 @@ public final class ScanRunner {
       checkers.add(new org.plumb.dfa.checkers.controlflow.UnlockNotLockedChecker());
     if (config.runDeferredReleaseInLoop)
       checkers.add(new org.plumb.dfa.checkers.controlflow.DeferredReleaseInLoopChecker());
-    // ServletAtomicityDfa and
-    // SingletonRaceDfa are intentionally NOT registered by
-    // default: plumb-style has AST equivalents
-    // (ServletAtomicityCheck / SingletonRaceCheck in
-    // org.plumb.style.concurrency) that cover the same
-    // CWE-362 / CWE-366 with better precision. The DFA
-    // checkers remain in the source tree as a reference
-    // implementation; flip config.runServletAtomicity /
-    // runSingletonRace to true to enable them.
-    if (config.runServletAtomicity) {
-      // intentionally empty: the plumb-style AST equivalent
-      // handles this CWE.
-    }
-    if (config.runSingletonRace) {
-      // intentionally empty: the plumb-style AST equivalent
-      // handles this CWE.
-    }
+    // The two DFA checkers above are added by their own switches, and
+    // those switches default to false; the plumb-style AST equivalents
+    // are what a default scan runs.
     // CORS misconfiguration is covered by the AST checker
     // org.plumb.style.security.CorsMisconfigurationCheck (CWE-942),
     // auto-registered above in buildStyleChecks() via

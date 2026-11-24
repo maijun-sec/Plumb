@@ -27,6 +27,10 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 GATE = REPO / "scripts" / "check_dfaaug_claims.py"
 DOC = REPO / "docs" / "tech" / "DFA-AUGMENTATION-DESIGN.md"
 ZH_DOC = REPO / "docs" / "zh" / "tech" / "DFA-AUGMENTATION-DESIGN.md"
+SCAN_RUNNER = (REPO / "plumb-main" / "src" / "main" / "java" / "org" /
+               "plumb" / "main" / "ScanRunner.java")
+SCAN_CONFIG = (REPO / "plumb-main" / "src" / "main" / "java" / "org" /
+               "plumb" / "main" / "ScanConfig.java")
 PYTHON = sys.executable
 
 
@@ -78,6 +82,38 @@ MUTANTS = [
      DOC,
      "are still in the source code but are **not registered**",
      "are still in the source code and are **registered**"),
+
+    # --- the registration stops being conditional ---------------------
+    #
+    # The document says the two race checkers are not registered BY
+    # DEFAULT. That is a claim about two things: the registration has
+    # to be conditional, and the switch has to be off by default. Both
+    # are checkable, so both are mutated here.
+    ("unconditional-registration",
+     SCAN_RUNNER,
+     "    if (config.runSingletonRace)\n"
+     "      checkers.add(new org.plumb.dfa.checkers.controlflow.SingletonRaceDfaChecker());",
+     "    checkers.add(new org.plumb.dfa.checkers.controlflow.SingletonRaceDfaChecker());"),
+    ("switch-defaults-to-true",
+     SCAN_CONFIG,
+     "public boolean runSingletonRace = false;",
+     "public boolean runSingletonRace = true;"),
+    # The document's own account of the mechanism goes stale: it says
+    # the branch adds nothing, while the runner adds the checker.
+    ("doc-says-the-branch-is-empty",
+     DOC,
+     "they are added only under the `config.runServletAtomicity` and `config.runSingletonRace`\n"
+     "switches, and both switches default to `false` in `ScanConfig`, because the `plumb-style` AST\n"
+     "equivalents cover the same CWE with better precision.",
+     "the `config.runServletAtomicity` and `config.runSingletonRace` branches are deliberately\n"
+     "**empty**, because the `plumb-style` AST equivalents cover the same CWE with better precision."),
+    ("zh-doc-says-the-branch-is-empty",
+     ZH_DOC,
+     "它们只在 `config.runServletAtomicity` 和 `config.runSingletonRace` 两个开关下才被加入，\n"
+     "而这两个开关在 `ScanConfig` 里默认是 `false`，因为 `plumb-style` 的 AST 等价实现\n"
+     "以更高的精度覆盖同样的 CWE。把开关打开即可启用。",
+     "`config.runServletAtomicity` 和 `config.runSingletonRace` 两个分支是**故意留空的**，\n"
+     "因为 `plumb-style` 的 AST 等价实现以更高的精度覆盖同样的 CWE。"),
 
     # --- the API goes back to something that does not exist -----------
     ("invented-api-strip-type",
