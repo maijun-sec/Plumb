@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Globalization;
 
 namespace Plumb.CSharpSidecar;
 
@@ -2880,20 +2881,9 @@ internal sealed partial class TacTranslator
             refOutDests.Add(null);
         }
 
-        foreach (var argument in invocation.ArgumentList.Arguments)
-        {
-            var operand = TranslateExpression(argument.Expression, store: false);
-            if (operand is null)
-            {
-                var unknown = NewTemp();
-                Emit(InstructionKind.HAVOC, dest: unknown, node: argument);
-                operand = unknown;
-            }
-            arguments.Add(operand);
-            // `out` and `ref` are written back into the argument's variable. `in` is not: it is
-            // read-only, and the source writes no keyword for it.
-            refOutDests.Add(IsByReferenceArgument(argument) ? operand : null);
-        }
+        var bound = BindArgumentsToParameters(invocation, method);
+        arguments.AddRange(bound.Operands);
+        refOutDests.AddRange(bound.RefOuts);
 
         // A call that passes NO argument by reference sends no list at all: the wire field is
         // absent rather than a list of nulls.
@@ -2916,6 +2906,212 @@ internal sealed partial class TacTranslator
         Emit(InstructionKind.CALL, dest: result, calleeSig: calleeSignature, args: arguments,
             refOutDests: byRefDests, node: invocation);
         return result;
+    }
+
+    /// <summary>
+    /// The arguments of a call, bound to the PARAMETERS they belong to.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why the order is not the source order.</b> A call may NAME its arguments
+    /// (<c>Copy(value: out result, input: input)</c>) and may leave an optional one out
+    /// (<c>Copy(input, out result)</c> on a method whose middle parameter has a
+    /// default). Both change which argument lands on which parameter.
+    /// </para>
+    /// <para>
+    /// <b>Why that matters here.</b> The engine binds formal <c>i</c> to
+    /// <c>args[i+1]</c> BY POSITION, and the arity in the callee key is the PARAMETER
+    /// COUNT (<see cref="TypeMapper.For(IMethodSymbol)"/>). An argument list in source
+    /// order is therefore read as if it were in parameter order: a named argument lands
+    /// on the wrong formal, and an omitted optional parameter shifts every argument
+    /// after it by one. A call that writes tainted data into an <c>out</c> parameter
+    /// then writes it into a variable the sink never reads.
+    /// </para>
+    /// <para>
+    /// <b>Why the fix is here and not in the engine.</b> The engine's convention is
+    /// "args[0] is the receiver, args[1..] are the arguments, one per parameter, in
+    /// parameter order". Making the side car produce that shape needs no change to the
+    /// IR, to the wire protocol, or to the engine -- and a call that already has one
+    /// argument per parameter comes out unchanged, because every slot is filled by the
+    /// argument that was already there.
+    /// </para>
+    /// </remarks>
+    /// <param name="invocation">the call</param>
+    /// <param name="method">the method being called</param>
+    /// <returns>the operands, and the by-reference list parallel to them</returns>
+    private (List<Operand> Operands, List<Operand?> RefOuts) BindArgumentsToParameters(
+        InvocationExpressionSyntax invocation, IMethodSymbol method)
+    {
+        var parameters = method.Parameters;
+        var operands = new Operand?[parameters.Length];
+        var refOuts = new Operand?[parameters.Length];
+        var filled = new bool[parameters.Length];
+
+        // The arguments that belong to NO parameter: the extra ones of a `params`
+        // parameter. They are not packed into an array -- the IR has no array shape for
+        // that yet -- so the first of them takes the `params` parameter's slot and the
+        // rest follow it, which is what the side car has always done.
+        var extraOperands = new List<Operand>();
+        var extraRefOuts = new List<Operand?>();
+
+        // A `params` parameter takes the arguments nobody else took. It is always the
+        // last one, and it is the only parameter whose value is an ARRAY of the
+        // arguments rather than one of them.
+        var fixedCount = parameters.Length;
+        if (fixedCount > 0 && parameters[fixedCount - 1].IsParams)
+        {
+            fixedCount--;
+        }
+
+        var nextPositional = 0;
+        foreach (var argument in invocation.ArgumentList.Arguments)
+        {
+            var operand = TranslateExpression(argument.Expression, store: false);
+            if (operand is null)
+            {
+                var unknown = NewTemp();
+                Emit(InstructionKind.HAVOC, dest: unknown, node: argument);
+                operand = unknown;
+            }
+
+            var target = -1;
+            var named = argument.NameColon;
+            if (named is not null)
+            {
+                // A named argument names the parameter it belongs to.
+                var wanted = named.Name.Identifier.ValueText;
+                for (var i = 0; i < parameters.Length; i++)
+                {
+                    if (parameters[i].Name == wanted)
+                    {
+                        target = i;
+                        break;
+                    }
+                }
+            }
+            if (target < 0)
+            {
+                // A positional argument takes the next parameter nobody took.
+                while (nextPositional < fixedCount && filled[nextPositional])
+                {
+                    nextPositional++;
+                }
+                if (nextPositional < fixedCount)
+                {
+                    target = nextPositional;
+                }
+                else if (fixedCount < parameters.Length && !filled[fixedCount])
+                {
+                    // The `params` parameter: the first extra argument takes its slot.
+                    target = fixedCount;
+                }
+            }
+            if (target < 0)
+            {
+                extraOperands.Add(operand);
+                extraRefOuts.Add(IsByReferenceArgument(argument) ? operand : null);
+                continue;
+            }
+            operands[target] = operand;
+            // `out` and `ref` are written back into the argument's variable. `in` is not: it is
+            // read-only, and the source writes no keyword for it.
+            refOuts[target] = IsByReferenceArgument(argument) ? operand : null;
+            filled[target] = true;
+            if (target >= nextPositional)
+            {
+                nextPositional = target + 1;
+            }
+        }
+
+        // A parameter nobody passed has the DEFAULT it would have had. The default of an
+        // optional parameter is a compile-time constant, so the slot can hold it
+        // exactly; a parameter that has no default and was not passed means the call
+        // does not compile, and the slot holds an unknown value.
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            if (filled[i])
+            {
+                continue;
+            }
+            if (parameters[i].IsParams)
+            {
+                // An empty `params` argument: there is no array shape to put in the slot,
+                // and the parameter is last, so leaving it empty costs no position.
+                continue;
+            }
+            var value = DefaultOperand(parameters[i]);
+            if (value is null)
+            {
+                var unknown = NewTemp();
+                Emit(InstructionKind.HAVOC, dest: unknown, node: invocation);
+                value = unknown;
+            }
+            operands[i] = value;
+        }
+
+        var outOperands = new List<Operand>();
+        var outRefOuts = new List<Operand?>();
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            var slot = operands[i];
+            if (slot is null)
+            {
+                continue;
+            }
+            outOperands.Add(slot);
+            outRefOuts.Add(refOuts[i]);
+        }
+        outOperands.AddRange(extraOperands);
+        outRefOuts.AddRange(extraRefOuts);
+        return (outOperands, outRefOuts);
+    }
+
+    /// <summary>
+    /// The default value of an optional parameter, as a constant operand.
+    /// </summary>
+    /// <param name="parameter">the parameter</param>
+    /// <returns>the constant, or null when the default is not a value this can spell</returns>
+    private static Operand? DefaultOperand(IParameterSymbol parameter)
+    {
+        if (!parameter.HasExplicitDefaultValue)
+        {
+            return null;
+        }
+        var value = parameter.ExplicitDefaultValue;
+        if (value is null)
+        {
+            if (!parameter.Type.IsValueType)
+            {
+                return new Operand { Kind = "CONST", ConstKind = "NULL" };
+            }
+            // `= default` on a value type: the default is the type's zero.
+            return parameter.Type.SpecialType switch
+            {
+                SpecialType.System_Boolean => new Operand { Kind = "CONST", ConstKind = "BOOL", Value = "false" },
+                SpecialType.System_Byte => new Operand { Kind = "CONST", ConstKind = "INT", Value = "0" },
+                SpecialType.System_SByte => new Operand { Kind = "CONST", ConstKind = "INT", Value = "0" },
+                SpecialType.System_Int16 => new Operand { Kind = "CONST", ConstKind = "INT", Value = "0" },
+                SpecialType.System_UInt16 => new Operand { Kind = "CONST", ConstKind = "INT", Value = "0" },
+                SpecialType.System_Int32 => new Operand { Kind = "CONST", ConstKind = "INT", Value = "0" },
+                SpecialType.System_UInt32 => new Operand { Kind = "CONST", ConstKind = "INT", Value = "0" },
+                SpecialType.System_Int64 => new Operand { Kind = "CONST", ConstKind = "LONG", Value = "0" },
+                SpecialType.System_UInt64 => new Operand { Kind = "CONST", ConstKind = "LONG", Value = "0" },
+                SpecialType.System_Single => new Operand { Kind = "CONST", ConstKind = "FLOAT", Value = "0" },
+                SpecialType.System_Double => new Operand { Kind = "CONST", ConstKind = "DOUBLE", Value = "0" },
+                _ => null,
+            };
+        }
+        return value switch
+        {
+            bool b => new Operand { Kind = "CONST", ConstKind = "BOOL", Value = b ? "true" : "false" },
+            string s => new Operand { Kind = "CONST", ConstKind = "STRING", Value = s },
+            int i => new Operand { Kind = "CONST", ConstKind = "INT", Value = i.ToString(CultureInfo.InvariantCulture) },
+            long l => new Operand { Kind = "CONST", ConstKind = "LONG", Value = l.ToString(CultureInfo.InvariantCulture) },
+            float f => new Operand { Kind = "CONST", ConstKind = "FLOAT", Value = f.ToString(CultureInfo.InvariantCulture) },
+            double d => new Operand { Kind = "CONST", ConstKind = "DOUBLE", Value = d.ToString(CultureInfo.InvariantCulture) },
+            decimal m => new Operand { Kind = "CONST", ConstKind = "DECIMAL", Value = m.ToString(CultureInfo.InvariantCulture) },
+            _ => null,
+        };
     }
 
     /// <summary>
