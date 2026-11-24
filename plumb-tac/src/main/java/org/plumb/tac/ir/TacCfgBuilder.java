@@ -25,9 +25,11 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Build a {@link TacCfg} from a {@link TacFunction}'s linear instruction stream. Standard leader /
@@ -53,10 +55,16 @@ import java.util.Objects;
  * exception-flow edges for blocks inside try / catch / finally regions. Any block whose instruction
  * range falls inside a try region (per {@link TacFunction#tryRegions()}) gets extra successors
  * pointing to the catch handler blocks of that region, so the dataflow engine can propagate facts
- * through catch paths. Blocks inside a catch range whose last instruction is a {@code THROW}
- * (rethrow) get an extra successor pointing to the region's finally block (if any). The normal
- * successors (try-completion fall-through into finally, catch-completion fall-through into finally)
- * are the translator's responsibility -- the translator emits explicit {@code JUMP} instructions to
+ * through catch paths. Which handlers a block reaches is decided by the TYPE of the exception it
+ * raises: a handler whose declared type ({@code CATCH_HANDLER.ctorType}) cannot be an instance of
+ * the thrown type ({@code THROW.ctorType}) is not reached, and a handler that catches the exception
+ * shadows the handlers after it. The type relation itself is world knowledge, so it comes from an
+ * {@link ExceptionTypeMatcher} rather than from the TAC; the default matcher is {@link
+ * ExceptionTypeHierarchies#defaultMatcher()}, and a caller that knows a different platform passes
+ * its own. Blocks inside a catch range whose last instruction is a {@code THROW} (rethrow) get an
+ * extra successor pointing to the region's finally block (if any). The normal successors
+ * (try-completion fall-through into finally, catch-completion fall-through into finally) are the
+ * translator's responsibility -- the translator emits explicit {@code JUMP} instructions to
  * L_FINALLY labels. This builder only wires the <em>non-normal</em> paths.
  */
 public final class TacCfgBuilder {
@@ -64,7 +72,25 @@ public final class TacCfgBuilder {
   private TacCfgBuilder() {}
 
   public static TacCfg build(TacFunction fn) {
+    return build(fn, ExceptionTypeHierarchies.defaultMatcher());
+  }
+
+  /**
+   * Build the CFG, deciding the exception-flow edges with the given type matcher.
+   *
+   * <p><b>Why the matcher is a parameter.</b> Whether an exception of one type reaches a handler of
+   * another type is a question about the platform's exception hierarchy, not about the analysed
+   * program, so the caller that knows the platform supplies the answer. The default matcher is
+   * {@link ExceptionTypeHierarchies#defaultMatcher()}, the catalogue that ships with the IR; a
+   * caller with a better source of truth (a classpath it can read) can pass its own.
+   *
+   * <p>Every consumer must use the SAME matcher, because the exception edges are part of the CFG
+   * the dataflow engine walks: two CFGs built from one function with different matchers would
+   * disagree about which catch handler a throw reaches.
+   */
+  public static TacCfg build(TacFunction fn, ExceptionTypeMatcher matcher) {
     Objects.requireNonNull(fn, "fn");
+    Objects.requireNonNull(matcher, "matcher");
     List<TacInstruction> insns = fn.instructions();
     if (insns.isEmpty()) {
       return new TacCfg(fn.signature(), List.of(), Map.of(), -1, Map.of());
@@ -222,7 +248,8 @@ public final class TacCfgBuilder {
     // additional exception edges here — the DFA engine walks
     // them via normal successors.
     Map<Integer, List<Integer>> excSuccs =
-        buildExceptionSuccessors(blocks, insns, labelToBlock, fn.tryRegions());
+        buildExceptionSuccessors(
+            blocks, insns, labelToBlock, fn.tryRegions(), matcher, fn.sourceLanguage());
 
     int entry = blocks.isEmpty() ? -1 : blocks.get(0).id();
     return new TacCfg(fn.signature(), blocks, succs, entry, excSuccs);
@@ -350,11 +377,28 @@ public final class TacCfgBuilder {
 
   /**
    * Compute exception-flow edges from the function's try regions. For each region, every block
-   * whose range falls inside {@code [tryStart, tryEnd]} gets an edge to every catch handler block.
-   * Every block in {@code [catchStart, catchEnd]} that ends in a {@code THROW} gets an edge to the
-   * finally block (if any). The result preserves insertion order so callers that care about
-   * determinism (test assertions) get a stable edge order: catch handlers in source order, finally
-   * before/after as the region's structure dictates.
+   * whose range falls inside {@code [tryStart, tryEnd]} gets an edge to the catch handler blocks it
+   * can reach. Every block in {@code [catchStart, catchEnd]} that ends in a {@code THROW} gets an
+   * edge to the finally block (if any). The result preserves insertion order so callers that care
+   * about determinism (test assertions) get a stable edge order: catch handlers in source order,
+   * finally before/after as the region's structure dictates.
+   *
+   * <p><b>Which handlers a block reaches.</b> A handler is reachable when the exception that leaves
+   * the try body can be an instance of the handler's declared type. The block's exception sources
+   * decide that:
+   *
+   * <ul>
+   *   <li>A {@code THROW} whose {@code ctorType} names a type contributes that type.
+   *   <li>Any instruction that may raise an exception of a type nobody knows -- a call, a
+   *       constructor, an array or field access, a division, a cast -- contributes "unknown".
+   *   <li>Nothing else contributes.
+   * </ul>
+   *
+   * <p>When the block's sources are not fully known, EVERY handler stays reachable: that is the
+   * over-approximation that cannot lose a flow. When they are known, the handler that catches the
+   * exception is the FIRST one, in source order, whose type is a supertype of the thrown type --
+   * the handlers after it are unreachable for that throw, and the ones whose type is unrelated
+   * never see it.
    *
    * <p>Overlapping regions (e.g. a try-with-catch where the same try block has multiple catch
    * handlers registered as separate regions by the SootUp front-end) are unioned: if a block falls
@@ -365,7 +409,9 @@ public final class TacCfgBuilder {
       List<TacBasicBlock> blocks,
       List<TacInstruction> insns,
       Map<String, Integer> labelToBlock,
-      List<TacFunction.TryRegion> regions) {
+      List<TacFunction.TryRegion> regions,
+      ExceptionTypeMatcher matcher,
+      SourceLanguage language) {
     if (regions == null || regions.isEmpty()) {
       return Map.of();
     }
@@ -374,10 +420,15 @@ public final class TacCfgBuilder {
     List<TacFunction.TryRegion> sorted = new ArrayList<>(regions);
     sorted.sort(Comparator.comparingInt(r -> r.tryStart));
     for (TacFunction.TryRegion region : sorted) {
-      List<Integer> catchBlockIds = new ArrayList<>();
+      // The handlers of this region, in SOURCE ORDER. The order decides
+      // which handler a throw reaches first, and the first matching one
+      // is the one that runs.
+      List<CatchHandler> handlers = new ArrayList<>();
       for (String cl : region.catchLabels) {
         Integer bid = labelToBlockRO.get(cl);
-        if (bid != null) catchBlockIds.add(bid);
+        if (bid != null) {
+          handlers.add(new CatchHandler(bid, handlerType(blocks, insns, bid)));
+        }
       }
       Integer finallyBlockId =
           region.finallyLabel == null ? null : labelToBlockRO.get(region.finallyLabel);
@@ -389,10 +440,11 @@ public final class TacCfgBuilder {
             && region.tryEnd >= region.tryStart
             && first >= region.tryStart
             && last <= region.tryEnd) {
-          if (!catchBlockIds.isEmpty()) {
+          List<Integer> targets = catchTargets(b, insns, handlers, matcher, language);
+          if (!targets.isEmpty()) {
             excSuccSets
                 .computeIfAbsent(b.id(), k -> new java.util.LinkedHashSet<>())
-                .addAll(catchBlockIds);
+                .addAll(targets);
           }
         }
         // In catch range, ends in THROW (rethrow)?
@@ -411,6 +463,166 @@ public final class TacCfgBuilder {
       result.put(e.getKey(), List.copyOf(e.getValue()));
     }
     return result;
+  }
+
+  /**
+   * The catch handler blocks a block's exception can reach.
+   *
+   * <p>The conservative answer is "every handler of the region": it is the over-approximation that
+   * cannot lose a flow, and it is what a block whose exception sources are not fully known gets. A
+   * block whose sources are all typed throws gets the sharper answer.
+   */
+  private static List<Integer> catchTargets(
+      TacBasicBlock block,
+      List<TacInstruction> insns,
+      List<CatchHandler> handlers,
+      ExceptionTypeMatcher matcher,
+      SourceLanguage language) {
+    if (handlers.isEmpty()) {
+      return List.of();
+    }
+    Set<String> thrownTypes = new LinkedHashSet<>();
+    boolean unknownSource = false;
+    for (int i = block.firstIndex(); i <= block.lastIndex(); i++) {
+      TacInstruction ins = insns.get(i);
+      if (ins.kind == TacInstruction.Kind.THROW) {
+        String thrown = typeName(ins.ctorType);
+        if (thrown == null) {
+          // A throw whose type nobody knows reaches every handler.
+          unknownSource = true;
+        } else {
+          thrownTypes.add(thrown);
+        }
+        continue;
+      }
+      if (mayRaiseUnknownException(ins)) {
+        unknownSource = true;
+      }
+    }
+    if (unknownSource || thrownTypes.isEmpty()) {
+      // Either something in the block may raise an exception of an unknown
+      // type, or the block raises no exception the IR knows about. Both
+      // cases keep every handler reachable.
+      List<Integer> all = new ArrayList<>(handlers.size());
+      for (CatchHandler handler : handlers) {
+        all.add(handler.blockId);
+      }
+      return all;
+    }
+    Set<Integer> targets = new LinkedHashSet<>();
+    for (String thrown : thrownTypes) {
+      targets.addAll(targetsForThrownType(thrown, handlers, matcher, language));
+    }
+    return List.copyOf(targets);
+  }
+
+  /**
+   * The handlers a throw of one type reaches.
+   *
+   * <p>The handlers are walked in source order. The first one whose type is a supertype of the
+   * thrown type catches the exception whatever the runtime type is, so the handlers after it are
+   * unreachable for this throw. A handler whose type is unrelated never sees it. A handler that
+   * might see it -- because its type is a subtype of the thrown type, or because the relation could
+   * not be decided -- keeps its edge, and the handlers after it keep theirs too.
+   */
+  private static Set<Integer> targetsForThrownType(
+      String thrown,
+      List<CatchHandler> handlers,
+      ExceptionTypeMatcher matcher,
+      SourceLanguage language) {
+    Set<Integer> targets = new LinkedHashSet<>();
+    for (CatchHandler handler : handlers) {
+      ExceptionTypeMatcher.Relation relation = matcher.relation(language, thrown, handler.type);
+      if (relation == ExceptionTypeMatcher.Relation.NEVER_CATCHES) {
+        // The handler's type cannot be an instance of the thrown type, so
+        // the exception cannot reach it.
+        continue;
+      }
+      targets.add(handler.blockId);
+      if (relation == ExceptionTypeMatcher.Relation.CATCHES) {
+        // This handler catches the exception whatever the runtime type is,
+        // so it is the one that runs and the handlers after it are
+        // unreachable for this throw.
+        break;
+      }
+    }
+    return targets;
+  }
+
+  /**
+   * The declared type of a catch handler, or {@code null} when the front end did not record one.
+   *
+   * <p>The handler's type is the {@code ctorType} of the {@code CATCH_HANDLER} instruction at the
+   * head of the handler's block.
+   */
+  private static String handlerType(
+      List<TacBasicBlock> blocks, List<TacInstruction> insns, int blockId) {
+    for (TacBasicBlock b : blocks) {
+      if (b.id() != blockId) {
+        continue;
+      }
+      for (int i = b.firstIndex(); i <= b.lastIndex(); i++) {
+        TacInstruction ins = insns.get(i);
+        if (ins.kind == TacInstruction.Kind.CATCH_HANDLER) {
+          return typeName(ins.ctorType);
+        }
+      }
+      return null;
+    }
+    return null;
+  }
+
+  /**
+   * Whether an instruction may raise an exception whose type the IR does not know.
+   *
+   * <p>This is the conservative list. A call may raise anything its callee raises; a constructor
+   * may raise anything; an array or field access may raise a null or a bounds error; a division may
+   * raise an arithmetic error; a cast may raise a class-cast error. Every one of them makes the
+   * block's exception sources unknown, which keeps every catch handler reachable.
+   */
+  private static boolean mayRaiseUnknownException(TacInstruction ins) {
+    switch (ins.kind) {
+      case CALL:
+      case NEW:
+      case NEWARRAY:
+      case ARRAYLOAD:
+      case ARRAYSTORE:
+      case FIELDLOAD:
+      case FIELDSTORE:
+      case BINOP:
+      case UNARYOP:
+      case NULL_CHECK:
+      case UNINTERPRETED:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * The name of a class type, or {@code null} for anything that is not a named class.
+   *
+   * <p>A type that is not a class cannot be matched against a catch handler: a handler's declared
+   * type is always a class, so an array or a primitive type says nothing about which handler would
+   * catch it.
+   */
+  private static String typeName(TacType type) {
+    if (type == null || type.kind() != TacType.Kind.CLASS) {
+      return null;
+    }
+    String name = type.displayName();
+    return name == null || name.isEmpty() ? null : name;
+  }
+
+  /** A catch handler: the block it starts, and the type it catches. */
+  private static final class CatchHandler {
+    private final int blockId;
+    private final String type;
+
+    CatchHandler(int blockId, String type) {
+      this.blockId = blockId;
+      this.type = type;
+    }
   }
 
   private static void markLeaderByLabel(

@@ -245,7 +245,22 @@ public final class TacInstruction implements java.io.Serializable {
   /** For CALL / NEW: the actual argument list. */
   public final List<TacOperand> args;
 
-  /** For NEW: the constructed type. For NEWARRAY: the component type. */
+  /**
+   * For NEW: the constructed type. For NEWARRAY: the component type. For INSTANCEOF: the type
+   * tested against. For CATCH_HANDLER: the declared exception type. For THROW: the type of the
+   * thrown value.
+   *
+   * <p><b>Why THROW needs one.</b> A catch handler matches on the type of the exception, so a TAC
+   * that does not say what was thrown cannot say which handler an exception reaches: every handler
+   * would have to be considered reachable from every throw. With the type on the instruction, the
+   * CFG builder can decide the exception-flow edges by type -- see {@link TacCfgBuilder}. The
+   * exception HIERARCHY is not here: it is world knowledge, and it comes from an {@link
+   * ExceptionTypeMatcher} rather than from the instruction stream.
+   *
+   * <p>{@code null} when the front end did not know the type. That is not "the type is {@code
+   * java.lang.Object}": it is the absence of a type, and a consumer must read it as "unknown"
+   * rather than as a name.
+   */
   public final TacType ctorType;
 
   /** For FIELDLOAD / FIELDSTORE: the field name. */
@@ -597,7 +612,12 @@ public final class TacInstruction implements java.io.Serializable {
       case JUMP -> sb.append("goto ").append(label);
       case LABEL -> sb.append(label).append(':');
       case RETURN -> sb.append("return").append(lhs1 == null ? "" : " " + lhs1);
-      case THROW -> sb.append("throw ").append(lhs1);
+      case THROW -> {
+        sb.append("throw ").append(lhs1);
+        if (ctorType != null) {
+          sb.append(" : ").append(ctorType);
+        }
+      }
       case CATCH_HANDLER -> sb.append("catch(").append(ctorType).append(") -> ").append(dest);
       case FINALLY_ENTER -> sb.append("finally: ");
       case NOP -> sb.append("nop");

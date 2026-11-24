@@ -1565,7 +1565,16 @@ func (t *translator) translateReturn(statement *ast.ReturnStmt) {
 		// The error is the exceptional exit. Emitting a THROW is what makes
 		// the error path visible: the engine can see that the function may
 		// exit exceptionally, and with what.
-		t.emit(Instruction{Kind: KindThrow, Lhs1: second}, statement.Pos())
+		//
+		// The THROW carries the type of the thrown value -- the DECLARED
+		// type of the second result, which is the error interface. That is
+		// what a handler is matched against, so a THROW without it could
+		// not say which handler the error reaches.
+		t.emit(Instruction{
+			Kind:     KindThrow,
+			Lhs1:     second,
+			CtorType: mapGoType(t.signature.Results().At(1).Type()),
+		}, statement.Pos())
 		return
 	}
 
@@ -3681,8 +3690,17 @@ func (t *translator) translateCallWithResults(call *ast.CallExpr, destination *O
 
 	case callPanic:
 		// A panic is the function's exceptional exit, so it is a THROW.
+		//
+		// The THROW carries the type of the panicked value: the static
+		// type of the argument. That is what a handler is matched against,
+		// so a THROW without it could not say which handler the panic
+		// reaches.
 		argument := t.valueOf(call.Args[0])
-		t.emit(Instruction{Kind: KindThrow, Lhs1: argument}, call.Pos())
+		t.emit(Instruction{
+			Kind:     KindThrow,
+			Lhs1:     argument,
+			CtorType: mapGoType(t.info.TypeOf(call.Args[0])),
+		}, call.Pos())
 		return nil
 
 	case callNew:

@@ -241,8 +241,12 @@ type Instruction struct {
 	// The argument list, for CALL, NEW and UNINTERPRETED.
 	Args []Operand `json:"args,omitempty"`
 
-	// The constructed or caught type, for NEW, NEWARRAY, INSTANCEOF and
-	// CATCH_HANDLER.
+	// The constructed or caught type, for NEW, NEWARRAY, INSTANCEOF,
+	// CATCH_HANDLER and THROW.
+	//
+	// For THROW it is the type of the thrown VALUE: the engine matches a
+	// catch handler against it, so a THROW that does not say what it threw
+	// leaves every handler reachable from every throw.
 	CtorType *TypeRef `json:"ctorType,omitempty"`
 
 	// The field name, for FIELDLOAD and FIELDSTORE.

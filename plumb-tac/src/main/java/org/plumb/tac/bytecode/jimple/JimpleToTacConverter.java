@@ -383,9 +383,16 @@ public final class JimpleToTacConverter {
         } else if (stmt instanceof JReturnVoidStmt) {
           insns.add(TacInstruction.builder(TacInstruction.Kind.RETURN).line(line).build());
         } else if (stmt instanceof JThrowStmt ts) {
+          TacOperand thrown = op.toOperand(ts.getOp());
           insns.add(
               TacInstruction.builder(TacInstruction.Kind.THROW)
-                  .lhs1(op.toOperand(ts.getOp()))
+                  .lhs1(thrown)
+                  // The type of the thrown value. The CFG builder matches a
+                  // catch handler against it, so a THROW that does not say
+                  // what it threw cannot say which handler the exception
+                  // reaches -- every handler would have to be considered
+                  // reachable from every throw.
+                  .ctorType(thrownType(thrown))
                   .line(line)
                   .build());
         } else {
@@ -601,6 +608,20 @@ public final class JimpleToTacConverter {
   }
 
   // ---- Per-statement converters -----------------------------------
+
+  /**
+   * The type of a thrown value, or {@code null} when the bytecode does not name one.
+   *
+   * <p>Jimple's throw statement names a local, and the local carries its declared type -- which is
+   * the type the catch handlers are matched against. A constant being thrown names no type at all,
+   * and neither does a local whose type the class file does not spell out.
+   */
+  private static TacType thrownType(TacOperand thrown) {
+    if (thrown instanceof TacOperand.TacVar var && var.type().kind() == TacType.Kind.CLASS) {
+      return var.type();
+    }
+    return null;
+  }
 
   private TacInstruction convertIdentity(JIdentityStmt is, int line, boolean hasThisLocal) {
     Local lhs = (Local) is.getLeftOp();

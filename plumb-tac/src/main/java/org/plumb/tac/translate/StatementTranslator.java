@@ -621,8 +621,70 @@ public final class StatementTranslator {
     b.emit(
         TacInstruction.builder(TacInstruction.Kind.THROW)
             .lhs1(value)
+            .ctorType(thrownClassType(ts.getExpression(), value))
             .line(TacTranslator.nodeLine(ts))
             .build());
+  }
+
+  /**
+   * The type of the value a {@code throw} raises.
+   *
+   * <p><b>Why the type matters.</b> A catch handler matches on the type of the exception, so a
+   * {@code THROW} that does not say what it threw cannot say which handler the exception reaches.
+   * The CFG builder reads this type to decide the exception-flow edges (see {@link
+   * org.plumb.tac.ir.TacCfgBuilder}), and the engine reads the same edges to decide which catch
+   * parameter inherits the thrown value's taint.
+   *
+   * <p><b>Why the solver is asked first.</b> The AST only says {@code IOException}; the solver says
+   * {@code java.io.IOException}, and the qualified name is what the exception hierarchy is keyed
+   * by. A class declared in the scanned source is not on the solver's classpath, so the solver
+   * throws for it -- and then the fallback is the AST's own type, which the hierarchy does not
+   * know, so the exception stays untyped and every handler stays reachable.
+   */
+  private TacType thrownClassType(Expression thrown, TacOperand value) {
+    TacType resolved = resolvedClassType(() -> thrown.calculateResolvedType());
+    if (resolved != null) {
+      return resolved;
+    }
+    if (value instanceof TacOperand.TacVar var && var.type().kind() == TacType.Kind.CLASS) {
+      return var.type();
+    }
+    return null;
+  }
+
+  /**
+   * The declared type of a catch clause, resolved.
+   *
+   * <p>Same reasoning as {@link #thrownClassType}: the handler's declared type is what the
+   * exception hierarchy is matched against, and the qualified name is the key.
+   */
+  private TacType catchClassType(com.github.javaparser.ast.type.Type declared) {
+    TacType resolved = resolvedClassType(() -> declared.resolve());
+    if (resolved != null) {
+      return resolved;
+    }
+    TacType mapped = TypeMapper.map(declared);
+    return mapped != null && mapped.kind() == TacType.Kind.CLASS ? mapped : null;
+  }
+
+  /**
+   * The resolved type of an expression, when the solver knows it and it names a class.
+   *
+   * <p>The solver throws for anything it cannot see -- a class declared in the scanned source, a
+   * construct it cannot type -- and asking again would not change the answer, so the failure is the
+   * answer: no type.
+   */
+  private static TacType resolvedClassType(
+      java.util.function.Supplier<com.github.javaparser.resolution.types.ResolvedType> resolve) {
+    try {
+      TacType mapped = TypeMapper.mapResolved(resolve.get());
+      if (mapped != null && mapped.kind() == TacType.Kind.CLASS) {
+        return mapped;
+      }
+    } catch (RuntimeException | StackOverflowError ignore) {
+      // The solver does not know this type.
+    }
+    return null;
   }
 
   private void translateBreak(BreakStmt bs, TacBuilder b) {
@@ -894,7 +956,7 @@ public final class StatementTranslator {
       var p = cc.getParameter();
       TacType catchTacType = null;
       if (p != null) {
-        TacType t = TypeMapper.map(p.getType());
+        TacType t = catchClassType(p.getType());
         if (t != null) {
           catchTacType = t;
           // Strip any generics / array suffix for the
@@ -924,7 +986,7 @@ public final class StatementTranslator {
               .line(TacTranslator.nodeLine(cc))
               .build());
       if (p != null) {
-        TacType t = TypeMapper.map(p.getType());
+        TacType t = catchTacType == null ? TypeMapper.map(p.getType()) : catchTacType;
         TacOperand.TacVar v = new TacOperand.TacVar(p.getNameAsString(), t, false);
         b.locals().add(v);
         // Emit CATCH_HANDLER with the catch parameter
