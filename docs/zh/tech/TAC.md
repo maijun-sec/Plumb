@@ -9,7 +9,7 @@
 | 目标 | 说明 |
 | --- | --- |
 | 数据流友好 | 单一定义/单一使用（SSA-lite），便于 forward/backward flow analysis |
-| 可序列化 | IR 类（`TacProgram` / `TacFunction` / `TacInstruction` / `TacCfg` / `TacBasicBlock` / `TacType` / `TacOperand` / `MergedProgram` / `SourceMap` 等 9 个）全部 `implements Serializable`，可通过 `IrSerializer` 写盘（见 §6） |
+| 可序列化 | 带字段布局的 IR 类（`TacProgram` / `TacFunction` / `TacInstruction` / `TacCfg` / `TacBasicBlock` / `TacType` / `TacOperand` / `TacGuard` / `TacDrop` / `TacLabelRef` / `TacValueDomain` / `TacAccessPath` / `TacResumePoint` / `MergedProgram` / `SourceMap` 等 15 个）全部 `implements Serializable`，可通过 `IrSerializer` 写盘（见 §6） |
 | 与语言无关 | 名字 + 类型的命名约定，不嵌 Java 17 语法糖 |
 | 紧凑 | 一份 ~5000 文件的仓库，其 IR 序列化到磁盘约 150 MB 量级 |
 

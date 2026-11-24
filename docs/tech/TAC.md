@@ -9,7 +9,7 @@ This document defines the TAC format of Plumb's intermediate representation (IR)
 | Goal | Explanation |
 | --- | --- |
 | Dataflow-friendly | Single-definition / single-use (SSA-lite), convenient for forward/backward flow analysis |
-| Serializable | All IR classes (`TacProgram` / `TacFunction` / `TacInstruction` / `TacCfg` / `TacBasicBlock` / `TacType` / `TacOperand` / `MergedProgram` / `SourceMap`, 9 in total) implement `Serializable` and can be written to disk through `IrSerializer` (see §6) |
+| Serializable | The IR classes that carry a field layout (`TacProgram` / `TacFunction` / `TacInstruction` / `TacCfg` / `TacBasicBlock` / `TacType` / `TacOperand` / `TacGuard` / `TacDrop` / `TacLabelRef` / `TacValueDomain` / `TacAccessPath` / `TacResumePoint` / `MergedProgram` / `SourceMap`, 15 in total) implement `Serializable` and can be written to disk through `IrSerializer` (see §6) |
 | Language-agnostic | A naming convention of name + type, with no Java 17 syntax sugar embedded |
 | Compact | For a repository of ~5000 files, the serialized IR is on the order of 150 MB on disk |
 

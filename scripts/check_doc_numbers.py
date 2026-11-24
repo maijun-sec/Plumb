@@ -498,6 +498,14 @@ CHECKS = [
      r"(\d+)\s*(?:种|kinds?\s+of)?\s*`ReturnShape\.Kind`", return_shape_kinds),
     ("docs/tech/CACHE.md",
      r"(\d+)\s*(?:个)?\s*`Serializable`", serializable_ir_classes),
+    # The SAME claim, in a second document. It was there all along, and the
+    # gate did not watch it: the number in TAC.md stayed at 9 while the
+    # source moved to 15, and nothing said so. The pattern anchors on the
+    # last class of the enumeration and on the word `Serializable` rather
+    # than on the prose around them, so the English wording ("15 in total")
+    # and the Chinese one ("等 15 个") are the same claim to it.
+    ("docs/tech/TAC.md",
+     r"`SourceMap`[^|\n]{0,40}?(\d+)[^|\n]{0,40}?Serializable", serializable_ir_classes),
     ("docs/build/PACKAGE.md",
      r"(\d+)\s*(?:项|entries?|keys?)", default_config_checks),
 ]

@@ -636,6 +636,27 @@ build never needs the network.
 go test ./...
 ```
 
+**The Maven build runs this too.** A test in
+`plumb-frontend/src/test/java/org/plumb/tac/frontend/go/GoSidecarBuildTest.java`
+runs the same command inside the reactor, so a change to this directory is
+measured by the Java build and not only by a developer who remembers to run
+the Go toolchain. It needs a Go toolchain on the PATH; without one the check
+is **skipped**, and a skip is not a pass -- the skip count is part of what the
+regression compares.
+
+That test class also checks that **the executable the Java side runs is not
+older than the source it was built from**. The sidecar is not in version
+control, so a stale build output survives in a working tree, and the Java
+tests would then measure the old code and report green. The check applies to
+this repository's own build output only: an installed release binary, or one
+named by `PLUMB_GO_SIDECAR`, is none of this repository's business.
+
+It compares timestamps, not contents. A fresh clone has fresh timestamps, so
+an old binary left in the tree reads as stale; and checking out an older
+commit makes the source older than the binary, which this cannot see. A
+content check would mean hashing the source into the binary, which changes
+the build script and the wire protocol.
+
 ### The smoke test
 
 `smoketest.py` drives the sidecar over the real framing and checks the
