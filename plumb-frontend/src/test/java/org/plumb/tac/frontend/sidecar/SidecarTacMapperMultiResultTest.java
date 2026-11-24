@@ -93,6 +93,42 @@ class SidecarTacMapperMultiResultTest {
     assertThat(ins.resultCount()).isEqualTo(1);
   }
 
+  /**
+   * A THROW can hand results back, and they reach the IR.
+   *
+   * <p>Go's {@code return 0, err} returns two values while exiting exceptionally, and the caller
+   * binds both of them. The side car puts the results on the THROW, so they arrive on the wire --
+   * and the mapper has to read them, because a dropped list is the same loss as a dropped field:
+   * the caller's {@code err} becomes a variable nothing writes.
+   */
+  @Test
+  @DisplayName("the results a throw hands back reach the IR")
+  void theResultsAThrowHandsBackReachTheIr() {
+    TacInstruction ins =
+        map(
+            "{\"kind\":\"THROW\",\"lhs1\":{\"kind\":\"VAR\",\"name\":\"err\"},"
+                + "\"ctorType\":{\"kind\":\"CLASS\",\"name\":\"error\"},"
+                + "\"resultDests\":[{\"kind\":\"VAR\",\"name\":\"v\"},{\"kind\":\"VAR\",\"name\":\"err\"}]}");
+
+    assertThat(ins.knownResultDests()).hasSize(2);
+    assertThat(ins.resultDestAt(0).toString()).contains("v");
+    assertThat(ins.resultDestAt(1).toString()).contains("err");
+    assertThat(ins.resultCount()).isEqualTo(2);
+    // The exceptional exit itself is untouched: the thrown value and the type it raises are
+    // still there, so a handler is still matched against it.
+    assertThat(ins.lhs1.toString()).contains("err");
+    assertThat(ins.ctorType).isNotNull();
+  }
+
+  @Test
+  @DisplayName("a throw that hands nothing back has no result")
+  void aThrowThatHandsNothingBackHasNoResult() {
+    TacInstruction ins = map("{\"kind\":\"THROW\",\"lhs1\":{\"kind\":\"VAR\",\"name\":\"e\"}}");
+
+    assertThat(ins.knownResultDests()).isEmpty();
+    assertThat(ins.resultCount()).isZero();
+  }
+
   @Test
   @DisplayName("the by-reference arguments reach the IR, in step with the argument list")
   void theByReferenceArgumentsReachTheIr() {

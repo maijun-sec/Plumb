@@ -322,11 +322,15 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * The slots past it are the further results of a call that produces several values (Go's {@code
    * v, err := f()}): the error result, the "ok" of a comma-ok assignment.
    *
-   * <p>Populated in {@link #checkInstruction}'s {@code RETURN} branch; consumed in {@link
-   * #summarizeFunction} to write {@link Operation.TaintPropagate} entries on the summary's {@code
-   * returnOps} (slot 0) and {@code resultOps} (the slots past it) so callers see "this function
-   * returns tainted data" AND "this function returns tainted data as its SECOND result". Cleared at
-   * every function boundary by {@link #initFunction}.
+   * <p>Populated in {@link #checkInstruction}'s {@code RETURN} branch, and in its {@code THROW}
+   * branch: an exceptional exit can hand results back too. Go's {@code return 0, err} returns two
+   * values while exiting exceptionally, and the caller binds both of them -- so the error's taint
+   * has to travel with the THROW, or it is lost at the call boundary.
+   *
+   * <p>Consumed in {@link #summarizeFunction} to write {@link Operation.TaintPropagate} entries on
+   * the summary's {@code returnOps} (slot 0) and {@code resultOps} (the slots past it) so callers
+   * see "this function returns tainted data" AND "this function returns tainted data as its SECOND
+   * result". Cleared at every function boundary by {@link #initFunction}.
    */
   private record PassedOut(int resultIndex, TacOperand.TacVar value) {}
 
@@ -1415,18 +1419,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // summary-fold path would silently miss
         // any "helper(s) -> s" style
         // propagation.
-        //
-        // EVERY result slot is recorded, not just the first: a function that returns
-        // several values hands back several, and the caller's variables for the ones past
-        // the first are bound to the results this instruction names. The instruction's own
-        // result list is the authority on which variable holds which result, so the slot
-        // index and the variable are read from the same place.
-        int resultCount = ins.resultCount();
-        for (int slot = 0; slot < resultCount; slot++) {
-          if (ins.resultDestAt(slot) instanceof TacOperand.TacVar ret) {
-            passedOutTaint.add(new PassedOut(slot, ret));
-          }
-        }
+        recordPassedOutResults(ins);
       }
       // try / catch / finally IR.
       //
@@ -1464,8 +1457,43 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // recent throw instruction that flows to
       // it via the CFG exception-successor
       // edges and adopts the recorded taint.
-      case THROW -> handleThrow(ins);
+      case THROW -> {
+        handleThrow(ins);
+        // A THROW can hand results back too.
+        //
+        // Go's `return 0, err` returns TWO values while exiting exceptionally, and the
+        // caller binds both of them: `v, err := f()`. The THROW names those results, so
+        // the error's taint travels with it.
+        //
+        // Without this, the error was lost at the call boundary: the callee's summary
+        // had no entry for the second result, so the caller's `err` variable stayed
+        // clean, and a sink that consumed that error was never reported. The THROW's
+        // own semantics -- the exception exit, the thrown type, the catch matching -- are
+        // untouched by this; the results only ride along.
+        recordPassedOutResults(ins);
+      }
       default -> {}
+    }
+  }
+
+  /**
+   * Record every result slot this instruction hands back, so the summary can say which of them
+   * carry taint.
+   *
+   * <p>EVERY slot is recorded, not just the first: a function that returns several values hands
+   * back several, and the caller's variables for the ones past the first are bound to the results
+   * this instruction names. The instruction's own result list is the authority on which variable
+   * holds which result, so the slot index and the variable are read from the same place.
+   *
+   * <p>Called for {@code RETURN} and for {@code THROW}. A THROW that names no results contributes
+   * nothing, which is the ordinary case for an exception.
+   */
+  private void recordPassedOutResults(TacInstruction ins) {
+    int resultCount = ins.resultCount();
+    for (int slot = 0; slot < resultCount; slot++) {
+      if (ins.resultDestAt(slot) instanceof TacOperand.TacVar ret) {
+        passedOutTaint.add(new PassedOut(slot, ret));
+      }
     }
   }
 

@@ -246,7 +246,7 @@ public final class TacInstruction implements java.io.Serializable {
   public final List<TacOperand> args;
 
   /**
-   * For CALL / RETURN: the destinations of the results this instruction produces, in order.
+   * For CALL / RETURN / THROW: the destinations of the results this instruction produces, in order.
    *
    * <p>A call may produce more than one value. Go's {@code v, err := f()} has two: the value and
    * the error. The TAC's CALL has ONE destination, so the further results had nowhere to go -- the
@@ -267,6 +267,13 @@ public final class TacInstruction implements java.io.Serializable {
    *
    * <p>Empty when the instruction produces a single result, which is the ordinary case. Then the
    * one result is {@link #dest} (or {@link #lhs1} for a RETURN).
+   *
+   * <p><b>For a THROW, the list says what the exceptional exit hands back.</b> Go's {@code return
+   * 0, err} returns two values, and the caller binds them to two variables -- but the function does
+   * not return NORMALLY on that path: it exits exceptionally. The results therefore ride on the
+   * THROW itself, and the thrown value ({@link #lhs1}) is also the last result: one value plays
+   * both roles. A THROW with no list throws without handing anything back, which is the ordinary
+   * case for an exception.
    */
   public final List<TacOperand> resultDests;
 

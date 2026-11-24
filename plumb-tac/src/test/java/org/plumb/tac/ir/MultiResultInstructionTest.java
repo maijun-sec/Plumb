@@ -127,6 +127,46 @@ class MultiResultInstructionTest {
     assertThat(ins.resultDestAt(0)).isNull();
   }
 
+  /**
+   * A THROW can hand results back.
+   *
+   * <p>Go's {@code return 0, err} returns two values while exiting exceptionally, and the caller
+   * binds both of them. The results therefore ride on the THROW, and the thrown value is also the
+   * last result: one value plays both roles.
+   *
+   * <p>The accessors have to answer for a THROW the way they answer for a CALL, because the engine
+   * reads the result slots off the instruction and does not ask what kind it is.
+   */
+  @Test
+  @DisplayName("a throw that hands results back says so")
+  void aThrowThatHandsResultsBackSaysSo() {
+    TacOperand.TacVar value = var("v");
+    TacOperand.TacVar error = var("err");
+
+    TacInstruction ins =
+        TacInstruction.builder(TacInstruction.Kind.THROW)
+            .lhs1(error)
+            .ctorType(TacType.ofClass("error"))
+            .resultDests(List.of(value, error))
+            .build();
+
+    assertThat(ins.knownResultDests()).containsExactly(value, error);
+    assertThat(ins.resultDestAt(0)).isSameAs(value);
+    assertThat(ins.resultDestAt(1)).isSameAs(error);
+    assertThat(ins.resultCount()).isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("a throw that hands nothing back has no result")
+  void aThrowThatHandsNothingBackHasNoResult() {
+    // The ordinary exception: it raises something and hands back nothing.
+    TacInstruction ins = TacInstruction.builder(TacInstruction.Kind.THROW).lhs1(var("e")).build();
+
+    assertThat(ins.knownResultDests()).isEmpty();
+    assertThat(ins.resultCount()).isZero();
+    assertThat(ins.resultDestAt(0)).isNull();
+  }
+
   @Test
   @DisplayName("a by-reference argument says which variable it is written back into")
   void aByReferenceArgumentSaysWhichVariableItIsWrittenBackInto() {

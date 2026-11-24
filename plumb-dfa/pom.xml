@@ -882,6 +882,18 @@
                              pass the first case and be a false positive on every
                              Go program whose error result is the clean one). -->
                         <include>org/plumb/dfa/taint/MultiResultTaintTest.java</include>
+                        <!-- The SAME shape, but on the EXCEPTIONAL exit. Go's `return 0, err`
+                             exits exceptionally AND hands back two values: the caller writes
+                             `v, err := f()` and binds both. The THROW used to name no
+                             results, so the caller's `err` was a variable nothing writes,
+                             and a callee that put attacker-controlled text into its error
+                             result lost that text at the call boundary. The test pins both
+                             directions: the taint in a callee's error result reaches the
+                             caller's variable for it, and a clean error stays clean when
+                             the value result is tainted (a binding that tainted every
+                             result would pass the first case and be a false positive on
+                             every Go program whose error is a constant). -->
+                        <include>org/plumb/dfa/taint/GoErrorExitTaintTest.java</include>
                         <!-- The iteration protocol has a different NAME in every language
                              that has one, and the engine recognises each of them. The
                              list has to name these classes: a test that is not on the

@@ -249,6 +249,87 @@ func (errFailedType) Error() string {
 	}
 }
 
+// TestTheErrorExitHandsBackItsResults pins the fix for the lost error.
+//
+// A Go function that returns (T, error) hands back TWO values, and the
+// caller binds them to two variables: `v, err := f()`. When the error exit
+// is lowered to a THROW and the THROW names no results, the second result
+// goes NOWHERE -- the caller's `err` is a variable nothing writes, and a
+// variable nothing writes is indistinguishable from a clean one.
+//
+// So a callee that put attacker-controlled text into its error result lost
+// that text at the call boundary, and a sink that consumed the error was
+// never reported. The THROW now carries the results.
+//
+// The results ride on the THROW rather than on a separate RETURN because
+// the function does NOT return normally on this path: it exits
+// exceptionally. A second instruction would say "this function also
+// returns", which is false.
+//
+// The EXCEPTIONAL EXIT must survive this: the THROW is still there, it
+// still carries the thrown value, and it still carries the type that a
+// handler is matched against. That is what the second half of this test
+// checks.
+func TestTheErrorExitHandsBackItsResults(t *testing.T) {
+	functions := translateSource(t, `
+package sample
+
+func produce() (int, error) {
+	return 0, errFailed
+}
+
+var errFailed = errFailedType{}
+
+type errFailedType struct{}
+
+func (errFailedType) Error() string {
+	return "failed"
+}
+`)
+
+	produce := functionNamed(t, functions, "produce")
+
+	throws := throwsIn(produce)
+	if len(throws) != 1 {
+		t.Fatalf("the throw count is %d, want exactly 1", len(throws))
+	}
+	throw := throws[0]
+
+	// The THROW hands back BOTH results: the value first, the error second.
+	//
+	// The order is the meaning. A list that started at the error would
+	// shift every slot to the left, and the engine would read the error
+	// as the value.
+	if len(throw.ResultDests) != 2 {
+		t.Fatalf("the throw carries %d results, want 2", len(throw.ResultDests))
+	}
+
+	// The second result is the ERROR, and it is the same value the throw
+	// raises: one value plays both roles.
+	if throw.ResultDests[1] == nil {
+		t.Fatalf("the second result is not bound: %+v", throw)
+	}
+	if throw.Lhs1 == nil || throw.Lhs1.Name != throw.ResultDests[1].Name {
+		t.Errorf("the thrown value is %+v, want the error result %+v",
+			throw.Lhs1, throw.ResultDests[1])
+	}
+
+	// The EXCEPTIONAL EXIT is unchanged: the type is still there, so a
+	// handler is still matched against it.
+	if throw.CtorType == nil {
+		t.Errorf("the throw does not name the type it raises: %+v", throw)
+	}
+
+	// Nothing was lost, so nothing is reported and the function is still
+	// fully understood.
+	if hasProblemOfKind(produce, ProblemSourceLowered) {
+		t.Errorf("the function reported a lowering problem: %+v", produce.Problems)
+	}
+	if produce.Precision != PrecisionFull {
+		t.Errorf("the precision is %q, want %q", produce.Precision, PrecisionFull)
+	}
+}
+
 func TestFunctionWithTwoMeaningfulResultsIsDegraded(t *testing.T) {
 	functions := translateSource(t, `
 package sample

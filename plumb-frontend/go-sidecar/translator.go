@@ -1570,10 +1570,34 @@ func (t *translator) translateReturn(statement *ast.ReturnStmt) {
 		// type of the second result, which is the error interface. That is
 		// what a handler is matched against, so a THROW without it could
 		// not say which handler the error reaches.
+		//
+		// It ALSO carries the RESULTS. This is the part that was missing,
+		// and the missing part was the whole error.
+		//
+		// A Go function that returns (T, error) hands back TWO values, and
+		// the caller binds them to two variables: `v, err := f()`. When
+		// the error exit is lowered to a THROW and the THROW names no
+		// results, the second result goes nowhere -- the caller's `err`
+		// is a variable nothing writes, and a variable nothing writes is
+		// indistinguishable from a clean one. So a callee that put
+		// attacker-controlled text into its error result lost that text
+		// at the call boundary, and a sink that consumed the error was
+		// never reported.
+		//
+		// The results ride along with the THROW rather than on a separate
+		// RETURN, because the function does NOT return normally on this
+		// path: it exits exceptionally. A second instruction would say
+		// "this function also returns", which is false -- and it would
+		// change the instruction count the coverage report reads.
+		//
+		// The list is in the same order as the results: entry 0 is the
+		// first result (the value), entry 1 is the error. The error is
+		// ALSO the thrown value (LHS1), so one value plays both roles.
 		t.emit(Instruction{
-			Kind:     KindThrow,
-			Lhs1:     second,
-			CtorType: mapGoType(t.signature.Results().At(1).Type()),
+			Kind:        KindThrow,
+			Lhs1:        second,
+			CtorType:    mapGoType(t.signature.Results().At(1).Type()),
+			ResultDests: []*Operand{first, second},
 		}, statement.Pos())
 		return
 	}
