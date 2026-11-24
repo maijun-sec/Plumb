@@ -42,6 +42,7 @@ import org.plumb.tac.ir.TacLabelRef;
 import org.plumb.tac.ir.TacMemberKind;
 import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacProgram;
+import org.plumb.tac.ir.TacResumePoint;
 import org.plumb.tac.ir.TacType;
 import org.plumb.tac.ir.TacValueDomain;
 
@@ -156,6 +157,10 @@ public final class SidecarTacMapper {
     TacMemberKind memberKind =
         memberKindName == null ? null : TacMemberKind.fromWire(memberKindName);
 
+    // The resume points: the places a suspended execution of this function may
+    // continue from. A generator has one per state it can be resumed in.
+    List<TacResumePoint> resumePoints = toResumePoints(wire.getArray("resumePoints"));
+
     return new TacFunction(
         wire.getString("name") == null ? "<unknown>" : wire.getString("name"),
         wire.getString("signature") == null ? "" : wire.getString("signature"),
@@ -176,7 +181,49 @@ public final class SidecarTacMapper {
         toAnnotationMap(wire.getObject("annotationValues")),
         ctx == null || path == null ? null : ctx.moduleOf(path),
         drops,
-        memberKind);
+        memberKind,
+        resumePoints);
+  }
+
+  /**
+   * Map the wire's resume points into the IR.
+   *
+   * <p>A resume point without a label names no place, so it is dropped: the execution would have
+   * nowhere to come back to, and a point that cannot be reached is not a fact about the program.
+   *
+   * <p>A kind this build does not know is read as {@link TacResumePoint.Kind#SUSPEND}: that is the
+   * kind that says "the caller resumes this", and reading an unknown kind as harmless would drop a
+   * real edge.
+   */
+  public static List<TacResumePoint> toResumePoints(Json.JsonArray wire) {
+    if (wire == null) {
+      return List.of();
+    }
+    List<TacResumePoint> out = new ArrayList<>();
+    for (int i = 0; i < wire.size(); i++) {
+      Json.JsonObject point = wire.getObject(i);
+      if (point == null) {
+        continue;
+      }
+      String label = point.getString("label");
+      if (label == null || label.isEmpty()) {
+        continue;
+      }
+      out.add(TacResumePoint.of(label, resumeKindOf(point.getString("kind"))));
+    }
+    return out;
+  }
+
+  /** The kind a wire resume point carries. */
+  private static TacResumePoint.Kind resumeKindOf(String name) {
+    if (name == null) {
+      return TacResumePoint.Kind.SUSPEND;
+    }
+    try {
+      return TacResumePoint.Kind.valueOf(name);
+    } catch (IllegalArgumentException ex) {
+      return TacResumePoint.Kind.SUSPEND;
+    }
   }
 
   /**

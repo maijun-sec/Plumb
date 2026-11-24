@@ -93,6 +93,27 @@ export const PRECISION = {
   LOWERED: "SOURCE_LOWERED",
 };
 
+// The execution effects a TAC instruction can carry.
+//
+// An instruction with no effect runs here, in this order, like any other. A
+// DEFERRED or CONCURRENT call runs at some other time or on some other
+// thread. A SUSPEND instruction is where a generator's execution leaves the
+// function; the function's resumePoints say where it comes back to.
+export const EFFECT = {
+  DEFERRED: "DEFERRED",
+  CONCURRENT: "CONCURRENT",
+  SUSPEND: "SUSPEND",
+};
+
+// The kinds a resume point can have.
+//
+// SUSPEND is the caller resuming a suspended execution. EXCEPTION is an
+// exception unwinding to that point.
+export const RESUME = {
+  SUSPEND: "SUSPEND",
+  EXCEPTION: "EXCEPTION",
+};
+
 // The problem kinds a function or a project can report.
 export const PROBLEM = {
   PARSE: "PARSE_PROBLEM",

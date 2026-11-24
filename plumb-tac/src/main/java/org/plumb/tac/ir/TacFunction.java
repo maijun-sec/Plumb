@@ -210,6 +210,14 @@ public final class TacFunction implements java.io.Serializable {
    */
   private final TacMemberKind memberKind;
 
+  /**
+   * The places a suspended execution of this function may continue from.
+   *
+   * <p>Empty for an ordinary function. A generator or a coroutine has one entry per state it can be
+   * resumed in; see {@link TacResumePoint}.
+   */
+  private final List<TacResumePoint> resumePoints;
+
   public TacFunction(
       String name,
       String signature,
@@ -394,6 +402,7 @@ public final class TacFunction implements java.io.Serializable {
     this.module = null;
     this.drops = List.of();
     this.memberKind = null;
+    this.resumePoints = List.of();
   }
 
   /**
@@ -669,6 +678,58 @@ public final class TacFunction implements java.io.Serializable {
       String module,
       List<TacDrop> drops,
       TacMemberKind memberKind) {
+    this(
+        name,
+        signature,
+        returnType,
+        params,
+        locals,
+        instructions,
+        classAnnotations,
+        methodAnnotations,
+        fieldAnnotations,
+        paramAnnotations,
+        enclosingClass,
+        origin,
+        tryRegions,
+        sourceLanguage,
+        irPrecision,
+        synthetic,
+        annotationValues,
+        module,
+        drops,
+        memberKind,
+        List.<TacResumePoint>of());
+  }
+
+  /**
+   * The full constructor, including the RESUME POINTS.
+   *
+   * <p>Like every other addition here, the parameter comes LAST, so the older signatures stay
+   * byte-for-byte intact and no existing call site changes which overload it binds to.
+   */
+  public TacFunction(
+      String name,
+      String signature,
+      TacType returnType,
+      List<TacOperand.TacVar> params,
+      List<TacOperand.TacVar> locals,
+      List<TacInstruction> instructions,
+      List<String> classAnnotations,
+      List<String> methodAnnotations,
+      Map<String, List<String>> fieldAnnotations,
+      Map<String, List<String>> paramAnnotations,
+      String enclosingClass,
+      SourceOrigin origin,
+      List<TryRegion> tryRegions,
+      SourceLanguage sourceLanguage,
+      IrPrecision irPrecision,
+      boolean synthetic,
+      Map<String, List<String>> annotationValues,
+      String module,
+      List<TacDrop> drops,
+      TacMemberKind memberKind,
+      List<TacResumePoint> resumePoints) {
     this.name = Objects.requireNonNull(name);
     this.signature = signature == null ? name : signature;
     this.returnType = returnType == null ? TacType.VOID : returnType;
@@ -692,6 +753,21 @@ public final class TacFunction implements java.io.Serializable {
     this.module = module;
     this.drops = drops == null ? List.of() : List.copyOf(drops);
     this.memberKind = memberKind;
+    this.resumePoints = resumePoints == null ? List.of() : List.copyOf(resumePoints);
+  }
+
+  /**
+   * The places a suspended execution of this function may continue from.
+   *
+   * <p>Never null; empty for an ordinary function. A generator or a coroutine has one entry per
+   * state it can be resumed in.
+   *
+   * <p>A function read from a cache written before this field existed carries none: Java
+   * deserialization does not run the constructor. Read it through this accessor, not through the
+   * field.
+   */
+  public List<TacResumePoint> resumePoints() {
+    return resumePoints == null ? List.of() : resumePoints;
   }
 
   /**

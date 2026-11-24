@@ -254,4 +254,60 @@ class SidecarTacMapperWireV2Test {
         .as("a guard whose subject was dropped says nothing about any value")
         .isEqualTo(new org.plumb.tac.ir.TacOperand.TacVar("t1", null, false));
   }
+
+  @Test
+  @DisplayName("a suspend point reaches the IR")
+  void aSuspendPointReachesTheIr() {
+    TacFunction fn =
+        map(
+            "{\"name\":\"x\",\"instructions\":[{\"kind\":\"CALL\",\"calleeSig\":\"<await>\","
+                + "\"effect\":\"SUSPEND\",\"dest\":{\"kind\":\"VAR\",\"name\":\"t1\"}}]}");
+
+    assertThat(fn.instructions()).hasSize(1);
+    assertThat(fn.instructions().get(0).isSuspending())
+        .as(
+            "the C# sidecar has been sending this marker for an await; while the IR had no"
+                + " SUSPEND value it was silently discarded, and a discarded marker is a fact"
+                + " that quietly does not exist")
+        .isTrue();
+  }
+
+  @Test
+  @DisplayName("the resume points reach the IR")
+  void theResumePointsReachTheIr() {
+    TacFunction fn =
+        map(
+            "{\"name\":\"x\",\"resumePoints\":[{\"label\":\"L_resume_1\",\"kind\":\"SUSPEND\"},"
+                + "{\"label\":\"L_resume_2\",\"kind\":\"EXCEPTION\"}]}");
+
+    assertThat(fn.resumePoints()).hasSize(2);
+    assertThat(fn.resumePoints().get(0).label()).isEqualTo("L_resume_1");
+    assertThat(fn.resumePoints().get(0).kind())
+        .isEqualTo(org.plumb.tac.ir.TacResumePoint.Kind.SUSPEND);
+    assertThat(fn.resumePoints().get(1).kind())
+        .isEqualTo(org.plumb.tac.ir.TacResumePoint.Kind.EXCEPTION);
+  }
+
+  @Test
+  @DisplayName("a resume point that names no place is not a fact about the program")
+  void aResumePointThatNamesNoPlaceIsNotAFactAboutTheProgram() {
+    TacFunction fn = map("{\"name\":\"x\",\"resumePoints\":[{\"kind\":\"SUSPEND\"}]}");
+
+    assertThat(fn.resumePoints())
+        .as("a resume point without a label names nowhere, so it is dropped")
+        .isEmpty();
+  }
+
+  @Test
+  @DisplayName("a resume kind this build does not know is read as the caller-driven one")
+  void aResumeKindThisBuildDoesNotKnowIsReadAsTheCallerDrivenOne() {
+    TacFunction fn =
+        map(
+            "{\"name\":\"x\",\"resumePoints\":[{\"label\":\"L_resume\",\"kind\":\"SOMETHING_NEW\"}]}");
+
+    assertThat(fn.resumePoints()).hasSize(1);
+    assertThat(fn.resumePoints().get(0).kind())
+        .as("reading an unknown kind as harmless would drop a real edge")
+        .isEqualTo(org.plumb.tac.ir.TacResumePoint.Kind.SUSPEND);
+  }
 }

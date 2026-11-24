@@ -57,6 +57,13 @@ public final class TacLabelRef implements Serializable {
     CATCH,
     /** A finally block's entry. */
     FINALLY_ENTRY,
+    /**
+     * A state a suspended execution resumes in.
+     *
+     * <p>A generator's {@code yield} leaves the function at a suspend point and the execution comes
+     * back at a label like this one; see {@link TacResumePoint}.
+     */
+    RESUME,
     /** A label whose purpose the front end could not classify. */
     OTHER
   }

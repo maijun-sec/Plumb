@@ -22,9 +22,11 @@
 
 import {
   CONST,
+  EFFECT,
   KIND,
   PRECISION,
   PROBLEM,
+  RESUME,
   TYPE,
   varOp,
   constOp,
@@ -396,6 +398,20 @@ class FunctionState {
     this.problems = [];
     this.drops = [];
     this.tryRegions = [];
+    /**
+     * The places a suspended execution of this function may continue from.
+     *
+     * <p>One entry per `yield`: the generator's states are the segments these labels delimit --
+     * the function's entry starts the first one, and each label starts the next -- and a suspend
+     * point is the edge out of one of them.
+     */
+    this.resumePoints = [];
+    /**
+     * The generator's output slot: where the value the driver receives is put.
+     *
+     * <p>Created on the first `yield`; a function that never yields has none.
+     */
+    this.generatorYielded = null;
     this.fieldAnnotations = {};
     this.classAnnotations = [];
     this.methodAnnotations = [];
@@ -1614,6 +1630,7 @@ export class Translator {
       problems,
       drops: state.drops,
       tryRegions: state.tryRegions,
+      resumePoints: state.resumePoints,
       classAnnotations: state.classAnnotations,
       methodAnnotations: state.methodAnnotations,
       fieldAnnotations: state.fieldAnnotations,
@@ -3405,14 +3422,35 @@ export class Translator {
    * only that it had been lowered partially. The sink was not merely missed: it was
    * never looked for.
    *
-   * <p><b>WHY THE OPERAND'S VALUE IS NOT KEPT.</b> The value a generator produces is
-   * handed to a DRIVER -- whoever calls `next()` on it -- and the TAC has no driver:
-   * there is no generator object, no state machine that says where the generator
-   * resumes, and no `next()` that reads what the generator produced. Writing the value
-   * into a local of the generator's own would say something the source does not say
-   * (the source has no such variable) and would reach nobody: the reader that matters
-   * is the driver, and the driver is not in the TAC. So the operand is evaluated for
-   * what it DOES -- its calls, its writes, its sinks -- and its value is left alone.
+   * <p><b>THE SHAPE: A STATE MACHINE, IN ONE FUNCTION.</b> A generator is a function whose
+   * execution can be suspended and resumed, and the TAC now says so:
+   *
+   * <pre>
+   *   MOVE gen.yielded = &lt;the operand's value&gt;   // what the driver receives
+   *   JUMP L_resume_1     [effect: SUSPEND]           // the execution leaves the function
+   * L_resume_1:                                       // the state it resumes in
+   * </pre>
+   *
+   * <p>The suspend point is the jump: the execution leaves the function there. The resume
+   * point is the label: the execution comes back there when the caller asks it to. The
+   * generator's states are the segments these labels delimit -- the function's entry starts
+   * the first one, and each label starts the next -- so the function's `resumePoints` are
+   * its states' entries, and the suspend points are the edges out of them.
+   *
+   * <p><b>WHY THE STATE VARIABLE IS NOT MATERIALIZED.</b> The runtime keeps the state in
+   * a field of the generator object and dispatches on it at the function's entry. The TAC
+   * does not need it: a function body is analysed ONCE, not re-entered per state, so a
+   * state variable would carry no fact the labels do not already carry -- and materializing
+   * it would mean splitting the body into segments, which a `yield` nested inside an
+   * `if` or a loop cannot be split into without rewriting the whole function into
+   * continuation-passing form.
+   *
+   * <p><b>WHY THE VALUE IS KEPT NOW.</b> It used to be dropped, on the grounds that the
+   * source has no variable to hold it and that the reader that matters is the driver,
+   * which is not in the TAC. The state machine answers the first half: the generator's
+   * output slot IS a thing the generator has, and putting the value there says what the
+   * generator produces. The second half still holds -- the driver is still not in the TAC
+   * -- and that is what the protocol drop below records.
    *
    * <p><b>WHAT IS STILL LOST, AND WHERE IT IS RECORDED.</b> Two things, and they are
    * different in kind. The generator's PROTOCOL is lost: the body is one stream, the
@@ -3429,11 +3467,39 @@ export class Translator {
    * @return the value of the expression
    */
   lowerYield(node) {
-    // The operand: user code, evaluated in the generator's own stream.
+    // The operand: user code, evaluated in the generator's own stream, BEFORE
+    // the execution leaves.
+    let operand = null;
     if (node.expression) {
-      this.lowerExpression(node.expression);
+      operand = this.lowerExpression(node.expression);
     }
-    // The expression's own value: what the driver sends back. Unknown.
+    // What the driver receives: the operand's value, in the generator's output slot.
+    const slot = this.generatorYieldedSlot();
+    if (operand) {
+      this.emit({
+        kind: KIND.MOVE,
+        dest: slot,
+        lhs1: operand,
+        ...this.position(node),
+      });
+    } else {
+      this.emit({ kind: KIND.HAVOC, dest: slot, ...this.position(node) });
+    }
+    // THE SUSPEND POINT, and the state the execution resumes in.
+    const resumeLabel = this.state.newLabel("RESUME");
+    this.emit({
+      kind: KIND.JUMP,
+      label: resumeLabel,
+      effect: EFFECT.SUSPEND,
+      ...this.position(node),
+    });
+    this.emitLabel(resumeLabel);
+    this.state.resumePoints.push({
+      label: resumeLabel,
+      kind: RESUME.SUSPEND,
+    });
+    // The expression's own value: what the driver sends back. It exists only
+    // once the execution has been resumed, so it is produced AT the resume point.
     const value = this.emitHavoc(node);
     if (node.asteriskToken !== undefined) {
       // A DELEGATED yield: the generator hands the values of ANOTHER iterable to its
@@ -3464,6 +3530,22 @@ export class Translator {
       node,
     );
     return value;
+  }
+
+  /**
+   * The generator's output slot: the place the value the driver receives is put.
+   *
+   * <p>One per function, created on the first `yield`. The name says what it is: the slot
+   * of the generator object that the value being yielded goes into.
+   *
+   * @return the operand for the slot
+   */
+  generatorYieldedSlot() {
+    if (!this.state.generatorYielded) {
+      this.state.generatorYielded = varOp("gen.yielded", TYPE.UNKNOWN, true);
+      this.declareLocal(this.state.generatorYielded);
+    }
+    return this.state.generatorYielded;
   }
 
   /**

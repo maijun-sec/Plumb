@@ -192,6 +192,26 @@ public final class TacCfgBuilder {
     // case where the catch's RETURN is absent).
     addTryCompletionEdges(succs, blocks, insns, labelToBlock, fn.tryRegions());
 
+    // Resume edges. A SUSPEND instruction is where the execution leaves the
+    // function; a resume point is where it may come back to. The edge between
+    // them is a normal control-flow edge, so it is added here rather than left
+    // implicit.
+    //
+    // Why it is added even though the linear stream usually already connects
+    // the two: the linear stream connects them as a FALL-THROUGH, which says
+    // "the code continues" and not "the execution comes back here". A resume
+    // point that no fall-through reaches would otherwise be unreachable -- a
+    // front end that models a generator's states by re-entering the body at a
+    // state dispatch has exactly that shape -- and the code behind it would
+    // lose its taint.
+    //
+    // The front ends in this repository do NOT have that shape: they emit the
+    // resume label right after the suspend jump, so with a single yield the
+    // edge coincides with the jump's own target. It is the LATER suspend
+    // points that get edges back to the EARLIER resume points, and those are
+    // the ones no fall-through reaches.
+    addResumeEdges(succs, blocks, insns, labelToBlock, fn.resumePoints());
+
     // Exception-flow edges. For each block that lies inside
     // a try region, add edges to the catch handler blocks (so a
     // throw inside the try body propagates facts to the catch
@@ -263,6 +283,69 @@ public final class TacCfgBuilder {
       if (idx >= b.firstIndex() && idx <= b.lastIndex()) return b.id();
     }
     return null;
+  }
+
+  /**
+   * Add the edges a suspended execution takes when it comes back.
+   *
+   * <p>Every block that holds a {@code SUSPEND} instruction gets an edge to every resume point of
+   * the function. The edge is added, not substituted, so the block's normal successors stay: the
+   * code after the suspend point is reachable both by falling through and by being resumed into.
+   *
+   * <p><b>Why every suspend point reaches every resume point.</b> Which state a suspended execution
+   * is resumed in is the CALLER's decision, and the caller is not in the TAC. Merging all of them
+   * is the honest over-approximation: it may connect states that cannot actually follow one
+   * another, and it never misses a pair that can.
+   *
+   * <p>Only {@link TacResumePoint.Kind#SUSPEND} points are wired this way. An {@link
+   * TacResumePoint.Kind#EXCEPTION} point is reached by an exception unwinding to it, which is the
+   * exception flow's business, not an ordinary edge.
+   */
+  private static void addResumeEdges(
+      Map<Integer, List<Integer>> succs,
+      List<TacBasicBlock> blocks,
+      List<TacInstruction> insns,
+      Map<String, Integer> labelToBlock,
+      List<TacResumePoint> resumePoints) {
+    if (resumePoints == null || resumePoints.isEmpty()) {
+      return;
+    }
+    List<Integer> resumeBlockIds = new ArrayList<>();
+    for (TacResumePoint point : resumePoints) {
+      if (point == null || point.kind() != TacResumePoint.Kind.SUSPEND) {
+        continue;
+      }
+      Integer blockId = labelToBlock.get(point.label());
+      if (blockId != null && !resumeBlockIds.contains(blockId)) {
+        resumeBlockIds.add(blockId);
+      }
+    }
+    if (resumeBlockIds.isEmpty()) {
+      return;
+    }
+    for (TacBasicBlock b : blocks) {
+      boolean suspends = false;
+      for (int i = b.firstIndex(); i <= b.lastIndex(); i++) {
+        if (insns.get(i).isSuspending()) {
+          suspends = true;
+          break;
+        }
+      }
+      if (!suspends) {
+        continue;
+      }
+      List<Integer> existing = succs.get(b.id());
+      List<Integer> augmented = new ArrayList<>();
+      if (existing != null) {
+        augmented.addAll(existing);
+      }
+      for (Integer resumeBlockId : resumeBlockIds) {
+        if (!augmented.contains(resumeBlockId)) {
+          augmented.add(resumeBlockId);
+        }
+      }
+      succs.put(b.id(), List.copyOf(augmented));
+    }
   }
 
   /**

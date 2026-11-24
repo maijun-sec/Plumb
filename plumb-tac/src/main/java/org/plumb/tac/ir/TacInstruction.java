@@ -161,7 +161,7 @@ public final class TacInstruction implements java.io.Serializable {
    * order".
    *
    * <p>The instruction stream is a sequence of steps, and for most calls that sequence IS the order
-   * they run in. Two language primitives break that assumption, and the effect says which one
+   * they run in. A few language primitives break that assumption, and the effect says which one
    * applies.
    *
    * <p><b>Each language keeps its own primitives here</b>, rather than being forced into one shared
@@ -186,7 +186,25 @@ public final class TacInstruction implements java.io.Serializable {
      * between it and anything else, so a checker that relies on the order of the instructions would
      * conclude something the program does not guarantee.
      */
-    CONCURRENT
+    CONCURRENT,
+    /**
+     * The execution LEAVES the function here.
+     *
+     * <p>It may come back to one of the function's resume points -- if the front end named any. A
+     * front end that marks the suspension but does not say where it resumes says only that the
+     * execution leaves, and that is still a fact worth keeping.
+     *
+     * <p>A generator's {@code yield} and a coroutine's {@code suspend} both do this: the current
+     * execution stops at this instruction, the caller gets control back, and the execution resumes
+     * later at a place the function itself named.
+     *
+     * <p><b>Why the effect alone is not enough.</b> The effect says "this instruction may leave";
+     * it does not say where the execution comes back to. That is what {@link TacResumePoint} is
+     * for: the function-level list of the places a suspended execution may resume from. The two
+     * together are what a generator's state machine is made of -- the suspend points are the edges
+     * out of a state, and the resume points are the states' entries.
+     */
+    SUSPEND
   }
 
   public final Kind kind;
@@ -285,9 +303,10 @@ public final class TacInstruction implements java.io.Serializable {
   /**
    * The execution effects of this instruction. Empty for an ordinary step.
    *
-   * <p>Only a CALL has one: it is the call whose timing or concurrency differs from the order of
-   * the instruction stream. An instruction with an empty set runs here, in this order, like any
-   * other.
+   * <p>Mostly a CALL has one: it is the call whose timing or concurrency differs from the order of
+   * the instruction stream. A generator's suspend point has one too -- it is the instruction where
+   * the execution leaves the function. An instruction with an empty set runs here, in this order,
+   * like any other.
    */
   public final Set<Effect> effects;
 
@@ -342,6 +361,15 @@ public final class TacInstruction implements java.io.Serializable {
    */
   public boolean isConcurrent() {
     return effects != null && effects.contains(Effect.CONCURRENT);
+  }
+
+  /**
+   * Whether the execution leaves the function at this instruction.
+   *
+   * <p>See {@link Effect#SUSPEND} and {@link TacFunction#resumePoints()}.
+   */
+  public boolean isSuspending() {
+    return effects != null && effects.contains(Effect.SUSPEND);
   }
 
   /**

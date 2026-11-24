@@ -176,6 +176,10 @@
                              must load only the checkers and the sink families of the
                              languages that were selected. -->
                         <include>org/plumb/dfa/config/LanguageScopedRuleLoadingTest.java</include>
+                        <!-- The script languages' passthrough rules: the shapes their
+                             front ends emit must be the shapes the rules name, or the
+                             rules never fire on the code they were written for. -->
+                        <include>org/plumb/dfa/config/ScriptLanguagePassthroughTest.java</include>
                         <include>org/plumb/dfa/taint/InputSourcePatternsTest.java</include>
                         <include>org/plumb/dfa/taint/TaintDomainTest.java</include>
                         <include>org/plumb/dfa/taint/GuardTrackerTest.java</include>
