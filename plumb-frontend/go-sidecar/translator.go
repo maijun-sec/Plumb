@@ -1602,9 +1602,41 @@ func (t *translator) translateReturn(statement *ast.ReturnStmt) {
 		return
 	}
 
-	t.report(statement, ProblemSourceLowered,
-		"a function with more than one meaningful result was lowered to its first result only")
-	t.emit(Instruction{Kind: KindReturn, Lhs1: first}, statement.Pos())
+	// EVERY result is carried, in the order the source declares them.
+	//
+	// The TAC's RETURN carries one value in LHS1 and the whole list in
+	// RESULT DESTS, so a function that returns two meaningful values has a
+	// faithful lowering: LHS1 is the first result and the list names every
+	// result in order. This is the same shape the named-results path above
+	// emits.
+	//
+	// It used to keep only the first result and report the loss. That cost
+	// the analysis two things, and the second one is the one that matters:
+	//
+	//  1. the function's precision. The loss is a loss of SHAPE, so the
+	//     function left the full-precision count. A coverage report that
+	//     says "this function is not fully understood" is right -- but only
+	//     as long as it is true, and it stopped being true here.
+	//
+	//  2. THE SECOND RESULT'S DATA. A caller binds that result to a
+	//     variable of its own -- `v, s := f()` -- and a variable nothing
+	//     writes is indistinguishable from a clean one. So a value that
+	//     reached the sink through the second result was never reported:
+	//     the callee's IR did not hold the value at all, so there was
+	//     nothing for the summary to carry to the call site.
+	//
+	// Nothing is lost now, so nothing is reported. The list is in the order
+	// the source's results are: entry 0 is the first result, entry 1 the
+	// second.
+	carried := []*Operand{first, second}
+	for _, expression := range statement.Results[2:] {
+		carried = append(carried, t.valueOf(expression))
+	}
+	t.emit(Instruction{
+		Kind:        KindReturn,
+		Lhs1:        first,
+		ResultDests: carried,
+	}, statement.Pos())
 }
 
 // namedResults returns the operands of the function's named results, in

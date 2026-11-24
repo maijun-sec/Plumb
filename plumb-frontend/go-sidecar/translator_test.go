@@ -330,32 +330,121 @@ func (errFailedType) Error() string {
 	}
 }
 
-func TestFunctionWithTwoMeaningfulResultsIsDegraded(t *testing.T) {
+// TestFunctionWithTwoMeaningfulResultsCarriesThemAll pins the fix for the
+// lost second result.
+//
+// IT USED TO PIN THE OPPOSITE. The test asserted that the function reported
+// a lowering problem and that its precision was lowered, because the lowering
+// kept only the FIRST result and called the rest a loss.
+//
+// The loss was real for the report and worse than that for the analysis. A
+// caller binds the second result to a variable of its own -- `v, s := f()` --
+// and a variable nothing writes is indistinguishable from a clean one. So a
+// value that reached the sink through the second result was never reported:
+// the callee's IR did not hold the value at all, so there was nothing for the
+// summary to carry to the call site.
+//
+// The TAC's RETURN carries one value in LHS1 and the whole list in RESULT
+// DESTS, so the lowering is faithful and nothing is lost. The test was
+// rewritten, not deleted: it still asserts that there is exactly ONE return
+// -- the coverage report reads the instruction count -- and that the return's
+// own value is still the FIRST result.
+func TestFunctionWithTwoMeaningfulResultsCarriesThemAll(t *testing.T) {
 	functions := translateSource(t, `
 package sample
 
 func pair() (int, string) {
-	return 1, "one"
+	value := 1
+	return value, "one"
 }
 `)
 
 	pair := functionNamed(t, functions, "pair")
 
-	if !hasProblemOfKind(pair, ProblemSourceLowered) {
-		t.Errorf("the function did not report a lowering problem: %+v", pair.Problems)
+	// Nothing is lost, so nothing is reported and the function is still
+	// fully understood.
+	if hasProblemOfKind(pair, ProblemSourceLowered) {
+		t.Errorf("the function reported a lowering problem: %+v", pair.Problems)
 	}
-	if pair.Precision != PrecisionLowered {
-		t.Errorf("the precision is %q, want %q", pair.Precision, PrecisionLowered)
+	if pair.Precision != PrecisionFull {
+		t.Errorf("the precision is %q, want %q", pair.Precision, PrecisionFull)
 	}
-	// Only the first result is lowered.
-	returns := 0
+
+	returns := []Instruction{}
 	for _, instruction := range pair.Instructions {
 		if instruction.Kind == KindReturn {
-			returns++
+			returns = append(returns, instruction)
 		}
 	}
-	if returns != 1 {
-		t.Errorf("the return count is %d, want exactly 1", returns)
+	if len(returns) != 1 {
+		t.Fatalf("the return count is %d, want exactly 1", len(returns))
+	}
+	ret := returns[0]
+
+	// BOTH results are carried, in the order the source declares them.
+	//
+	// The order is the meaning. A list that started at the second result
+	// would shift every slot to the left, and the engine would read the
+	// second result as the first.
+	if len(ret.ResultDests) != 2 {
+		t.Fatalf("the return carries %d results, want 2", len(ret.ResultDests))
+	}
+	if ret.ResultDests[0] == nil || ret.ResultDests[0].Name != "value" {
+		t.Errorf("the first result is %+v, want the variable \"value\"", ret.ResultDests[0])
+	}
+	if ret.ResultDests[1] == nil || ret.ResultDests[1].Value != "one" {
+		t.Errorf("the second result is %+v, want the constant \"one\"", ret.ResultDests[1])
+	}
+
+	// The return's own value is still the FIRST result: the destination a
+	// caller reads is the first result, and that did not move.
+	if ret.Lhs1 == nil || ret.Lhs1.Name != ret.ResultDests[0].Name {
+		t.Errorf("the return's value is %+v, want the first result %+v",
+			ret.Lhs1, ret.ResultDests[0])
+	}
+}
+
+// TestFunctionWithThreeMeaningfulResultsCarriesThemAll pins the same fix for
+// a function that returns MORE than two values.
+//
+// The third result is the one a list built for two would drop: `extraCount` in
+// the summary builder is the size of the longest result list minus one, so a
+// list of two would leave the third result with nowhere to live.
+func TestFunctionWithThreeMeaningfulResultsCarriesThemAll(t *testing.T) {
+	functions := translateSource(t, `
+package sample
+
+func triple() (int, string, bool) {
+	value := 1
+	return value, "one", true
+}
+`)
+
+	triple := functionNamed(t, functions, "triple")
+
+	if hasProblemOfKind(triple, ProblemSourceLowered) {
+		t.Errorf("the function reported a lowering problem: %+v", triple.Problems)
+	}
+	if triple.Precision != PrecisionFull {
+		t.Errorf("the precision is %q, want %q", triple.Precision, PrecisionFull)
+	}
+
+	returns := []Instruction{}
+	for _, instruction := range triple.Instructions {
+		if instruction.Kind == KindReturn {
+			returns = append(returns, instruction)
+		}
+	}
+	if len(returns) != 1 {
+		t.Fatalf("the return count is %d, want exactly 1", len(returns))
+	}
+	ret := returns[0]
+
+	if len(ret.ResultDests) != 3 {
+		t.Fatalf("the return carries %d results, want 3", len(ret.ResultDests))
+	}
+	if ret.ResultDests[2] == nil || ret.ResultDests[2].Value != "true" {
+		t.Errorf("the third result is %+v, want the constant \"true\"", ret.ResultDests[2])
 	}
 }
 
