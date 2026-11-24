@@ -117,9 +117,10 @@ callee 在 summary 里写出它改了哪些字段，caller 侧的机制把这些
   `visit(MethodDeclaration, StyleContext)`
 
 对应的 DFA 版（`SingletonRaceDfaChecker` / `ServletAtomicityDfaChecker`）
-仍在源码里但**不注册**：在 `ScanRunner.buildDfaCheckers()` 里，
-`config.runServletAtomicity` 和 `config.runSingletonRace` 两个分支是**故意留空的**，
-注释说明 `plumb-style` 的 AST 等价实现以更高的精度覆盖同样的 CWE。
+仍在源码里但**默认不注册**：在 `ScanRunner.buildDfaCheckers()` 里，
+它们只在 `config.runServletAtomicity` 和 `config.runSingletonRace` 两个开关下才被加入，
+而这两个开关在 `ScanConfig` 里默认是 `false`，因为 `plumb-style` 的 AST 等价实现
+以更高的精度覆盖同样的 CWE。把开关打开即可启用。
 这两个 DFA checker 作为参考实现留在源码树里。
 
 ## 3. DFA 增强 checker 详解
@@ -320,7 +321,7 @@ aiDedup: true|false}` 段。
 已经落地的 DFA 增强：ORM 的四个（`OrmLoadNullCheckDfaChecker`、
 `OrmUnnecessaryGetDfaChecker`、`OrmLostUpdateDfaChecker`、`NullDerefFromReturnDfaChecker`），
 以及 `SingletonRaceDfaChecker` / `ServletAtomicityDfaChecker`（这两条有 AST 版且
-精度更好，DFA 版留在源码里但不注册）。
+精度更好，DFA 版留在源码里但默认不注册）。
 
 还没有对应实现的：
 

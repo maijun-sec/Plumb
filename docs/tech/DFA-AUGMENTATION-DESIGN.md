@@ -123,11 +123,11 @@ been migrated to `plumb-style` and are pure AST checkers:
   `visit(MethodDeclaration, StyleContext)`
 
 The corresponding DFA versions (`SingletonRaceDfaChecker` / `ServletAtomicityDfaChecker`)
-are still in the source code but are **not registered**: in `ScanRunner.buildDfaCheckers()`
-the `config.runServletAtomicity` and `config.runSingletonRace` branches are deliberately
-**empty**, with a comment explaining that the `plumb-style` AST equivalents cover the same
-CWE with better precision. The DFA checkers remain in the source tree as a reference
-implementation.
+are still in the source code but are **not registered** by default: in `ScanRunner.buildDfaCheckers()`
+they are added only under the `config.runServletAtomicity` and `config.runSingletonRace`
+switches, and both switches default to `false` in `ScanConfig`, because the `plumb-style` AST
+equivalents cover the same CWE with better precision. The DFA checkers remain in the source tree
+as a reference implementation; flip the switch to enable one of them.
 
 ## 3. The DFA-augmented checkers in detail
 
@@ -340,7 +340,7 @@ aiDedup: true|false}` section instead.
 The DFA augmentations that already exist: the four of the ORM (`OrmLoadNullCheckDfaChecker`,
 `OrmUnnecessaryGetDfaChecker`, `OrmLostUpdateDfaChecker`, `NullDerefFromReturnDfaChecker`),
 as well as `SingletonRaceDfaChecker` / `ServletAtomicityDfaChecker` (these two have an AST version with
-better precision, so the DFA version stays in the source code but is not registered).
+better precision, so the DFA version stays in the source code but is not registered by default).
 
 Those without a corresponding implementation yet:
 
