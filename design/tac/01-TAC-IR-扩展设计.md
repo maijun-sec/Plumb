@@ -1023,7 +1023,7 @@ public enum NumericPolicy {
 | **IR-J** | `THROW` 的抛出类型（复用 `ctorType`） | 现在抛出点在 TAC 里**没有类型**，catch 只能靠 CFG 侧比对自己也拿不到的类型 | 02 §2 IR-J |
 | **IR-K** | 类型的三个维度：类型实参 / 联合 / 类型变量 | 「`A\|B` 拼成假类名」是**错的**（不是未知）；且泛型实参、联合、类型变量是**正交维度**，加 `Kind` 表达不了组合 | 02 §2 IR-K |
 | **IR-N** | 类型声明完整化（类型参数 / 允许的子类型） | sealed / permits 完全没处理；穷尽性检查需要知道子类型集合 | 02 §2 IR-N |
-| **IR-L** | 挂起 / 恢复（`Effect.SUSPEND` + `resumePoints`） | `suspend` / 协程需要能标出「这里可能挂起」与「恢复点在哪」；`Effect` 只有 DEFERRED/CONCURRENT 两个值且 Kotlin/Scala 从未用过 | 02 §2 IR-L |
+| **IR-L** | 挂起 / 恢复（`Effect.SUSPEND` + `resumePoints`） | `suspend` / 协程需要能标出「这里可能挂起」与「恢复点在哪」；`Effect` 只有 DEFERRED/CONCURRENT 两个值且 Kotlin/Scala 从未用过 | 02 §2 IR-L；**R22 已落地**（`14` §3.45）—— `Effect.SUSPEND`、`TacResumePoint`、`TacFunction.resumePoints()`、`TacLabelRef.Kind.RESUME`、CFG 的恢复边；生成器侧（TypeScript / ArkTS）已按这个形状降级 |
 | **IR-M** | 临界区（`criticalSections`） | 原子性 checker 存在，但**临界区范围**在 TAC 里没有 ⇒ 无法判断两条写是否同锁 | 02 §2 IR-M |
 | **IR-P** | **全语言统一的 `calleeSig` / arity / 接收者规范** | 这是**跨函数污点能否跨过方法边界**的总开关（Python 在每个方法边界断掉；Java for-each 用的是合成短名 `iterator/0`） | 02 §2 IR-P |
 | **IR-Q** | 强制转换与相等语义的引擎侧规则表 | PHP `"1abc"+1 == 2` 与 TS `"1abc"*1 == NaN` 不同；PHP `"0"` 是假而 JS 是真 | 02 §2 IR-Q |

@@ -224,7 +224,7 @@ r.find(id);                // Repo.find
 
 ### 4.1 打开工程
 
-**[MEASURED]** sidecar 把工程打开一次并一直持有。请求按绝对路径给出工程的���件，以及它们所在的根：
+**[MEASURED]** sidecar 把工程打开一次并一直持有。请求按绝对路径给出工程的文件，以及它们所在的根：
 
 ```json
 { "op": "openProject", "protocolVersion": 1, "projectId": "ts:C:/src/app",

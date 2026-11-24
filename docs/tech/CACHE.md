@@ -62,7 +62,7 @@ The TAC IR of Plumb is a **small data volume + heterogeneous fields + long lifet
 
 - **Small data volume**: the TAC IR of a single TU is only on the order of tens of KB; for a large project with
   ten thousand files the estimate is 150 MB, which is not a bottleneck for disk IO
-- **Heterogeneous fields**: the 14 `Serializable` IR classes each have mutable fields
+- **Heterogeneous fields**: the 15 `Serializable` IR classes each have mutable fields
   (`TacInstruction.line` / `column`, the sealed shapes of `TacOperand`, the
   `SourceMap.Loc` record, `TacProgram.sourcePath` is a `java.nio.file.Path`) --
   every added field makes Kryo register again
