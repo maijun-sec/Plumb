@@ -464,6 +464,30 @@
 
 ---
 
+### 11.5 本轮落地（2026-11-24）：IR-J —— Go 侧车的 `THROW` 带上类型
+
+这一轮改的是 Go 侧车的**三处 `THROW` 发射点**，以及引擎侧的**类型关系判别**（那一半记在 `14` §3.47）。
+
+#### 11.5.1 改了什么
+
+| 发射点 | 之前 | 现在 |
+|---|---|---|
+| **返回 error**（`translator.go` 的多值返回路径） | `THROW`，**没有类型** | `THROW` 带 `CtorType` = **第二个返回值的声明类型**（`error` 接口） |
+| **`panic(x)`** | `THROW`，**没有类型** | `THROW` 带 `CtorType` = **被 panic 值的静态类型**（`panic("boom")` ⇒ 字符串；`panic(myErr{})` ⇒ `sample.myErr`） |
+| **类型断言失败** | **已经有** `runtime.TypeAssertionError` | 不变（**测试是为了让它别悄悄消失**） |
+
+**⇒ 而这条链的后半段本来是通的**：`SidecarTacMapper.java:395` 是**无条件**读 `ctorType` 的（`builder.ctorType(toType(wire.getObject("ctorType")))`）
+⇒ ⇒ **⇒ 侧车一发，IR 侧自动就有 ⇒ Java 侧零改动** ⇒ ⇒ ⇒ **⇒ 而这也说明「补齐一条链路」有时只需要把它的一端填上**。
+
+#### 11.5.2 它买到什么（今天还买不到）
+
+`14` §3.47 实现了「CFG 按类型生成 catch 匹配边」⇒ ⇒ **⇒ 而 Go 侧今天**用不上**它**：
+`translator.go:252` 声明了 `tryRegions`、`:464` 发送它，但**全仓没有任何 append** ⇒ ⇒ ⇒ **⇒ 永远是空的**；
+而 Java 侧那条线**是通的**（`GoTacFrontend.java:713` 读 `wire.getArray("tryRegions")`）⇒ ⇒ ⇒ **⇒ ⇒ 所以缺的是侧车那一半**。
+
+**⇒ ⇒ 而这就是下一件 Go 的活**：把 `recover` 降成 `CATCH_HANDLER`（`ctorType` = `interface{}`，捕获一切），
+并在 deferred 闭包函数的 `TryRegion` 里声明 `catchTypes=["interface{}"]`（§7.1 的「`panic`/`recover`」小节已经写好了形状）⇒ ⇒ ⇒ **⇒ 有了它，Go 的 `panic` 才第一次有「被谁接住」这件事** ⇒ ⇒ ⇒ **⇒ ⇒ 而本轮先把类型这条链修好，是为了那一天到来时不用再改一遍协议**。
+
 ## 12. 验收口径
 
 | 门禁 | 内容 | 判据 |
@@ -478,6 +502,7 @@
 | **H 零静默** | 任何「丢了一块」的地方都必须有 drop | 构造测试用例：每个未识别节点都产生 drop；断言「函数体为空但无 drop」不可能出现 |
 | **I 老行为不变** | 同一语料跑新旧两版 | 新增能力生效处 finding **增加**，其它处 finding **不变**（`01` §6 的统一要求） |
 | **J Go 侧车那一层接进回归**（**⚠ R23 新增**） | ① 侧车自己的 `go test ./...` 在 **Maven 回归里**跑；② 侧车二进制**不比源码旧** | `plumb-frontend/.../go/GoSidecarBuildTest.java` 的 2 条用例；**缺工具链 / 缺二进制时跳过** ⇒ ⇒ **⇒ 跳过不是通过** ⇒ ⇒ **⇒ 而这两个洞的形状是「读数是绿的，而读数没有覆盖被声称覆盖的东西」**（§11.4） |
+| **K `THROW` 携带类型**（**⚠ R24 新增**） | ① 侧车的 `THROW` 发 `ctorType`；② IR 的 `THROW` 带上类型；③ CFG 按类型生成 catch 匹配边，**判不出来时保守保留** | `plumb-frontend/go-sidecar/throwtype_test.go` 的 **3** 条 ＋ `plumb-tac/.../ThrowCarriesTypeTest.java` 的 **4** 条 ＋ `plumb-tac/.../CatchEdgeTypeMatchingTest.java` 的 **8** 条 ⇒ ⇒ **⇒ 而「保守」那一档必须自己证明会红**：删掉 `CATCHES` 之后的 `break` ⇒ 「后面的 handler 被遮蔽」那两条断言**红**（`14` §3.47.6 的 M1） |
 
 ---
 

@@ -125,7 +125,7 @@ returns the element type when `kind == ARRAY`.
 | `JUMP` | `goto label` | Unconditional jump |
 | `LABEL` | `label:` | Basic block label |
 | `RETURN` | `return [lhs1]` | Method return |
-| `THROW` | `throw lhs1` | Throw an exception |
+| `THROW` | `throw lhs1 : <type>` | Throw an exception. The `ctorType` field carries the type of the thrown value -- the type a catch handler is matched against |
 | `CATCH_HANDLER` | `catch (<type>) -> dest` | Entry of a catch block (dest is the catch parameter) |
 | `FINALLY_ENTER` | `finally:` | Entry of a finally block |
 | `NOP` | — | no-op |
@@ -136,6 +136,7 @@ returns the element type when `kind == ARRAY`.
 `CATCH_HANDLER` and `FINALLY_ENTER` make try/catch/finally explicit in the IR (and add `exceptionSuccessors` edges to the CFG). The exact semantics:
 
 - **`CATCH_HANDLER` (`catch (<type>) -> dest`)** — the entry of a catch block. `dest` is the catch parameter binding (always non-null at runtime, with the type derived from the throws clause). When `TaintedCheckerBase` sees a `CATCH_HANDLER` it marks `dest` as NNE (Non-Null Evidence) and propagates the taint label of the associated `THROW` instruction to `dest`. This is why `NullDerefChecker` does not report "catch (NullPointerException e) { e.x ... }" — `e` is bound to be non-null.
+- **Which handler an exception reaches** -- the CFG builder decides the exception-flow edges by TYPE. The `THROW` carries the thrown type and the `CATCH_HANDLER` carries the declared type, so a handler whose type cannot be an instance of the thrown type is not reached, and the first handler that does catch it shadows the ones after it. When the type is unknown -- an untyped throw, or a call whose exception type nobody knows -- every handler stays reachable: that is the over-approximation which cannot lose a flow. The type relation itself is world knowledge, so it comes from an `ExceptionTypeMatcher` rather than from the TAC; the default one is the catalogue that ships with the IR.
 - **`FINALLY_ENTER` (`finally:`)** — the entry of a finally block. The CFG builder adds an exception edge to the FINALLY block from every basic block inside the try and every catch block (the ones ending in `THROW`), modelling the semantics of "the finally block always runs, no matter how try/catch goes".
 - The old `L_CATCH_<Type>` / `L_FINALLY` label name patterns are kept — label-based tooling (UnusedLabelChecker / SARIF / cache-key normaliser) is not broken.
 

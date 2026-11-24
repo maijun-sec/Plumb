@@ -125,7 +125,7 @@ public final class TacType implements Serializable {
 | `JUMP` | `goto label` | 无条件跳转 |
 | `LABEL` | `label:` | 基本块标签 |
 | `RETURN` | `return [lhs1]` | 方法返回 |
-| `THROW` | `throw lhs1` | 抛异常 |
+| `THROW` | `throw lhs1 : <type>` | 抛异常。`ctorType` 字段带着抛出的类型——而它正是 catch handler 匹配时比对的依据 |
 | `CATCH_HANDLER` | `catch (<type>) -> dest` | 入口 catch 块（dest 是 catch 参数） |
 | `FINALLY_ENTER` | `finally:` | 入口 finally 块 |
 | `NOP` | — | no-op |
@@ -136,6 +136,7 @@ public final class TacType implements Serializable {
 `CATCH_HANDLER` 和 `FINALLY_ENTER` 让 try/catch/finally 显式进入 IR（同时给 CFG 加 `exceptionSuccessors` 边）。具体语义：
 
 - **`CATCH_HANDLER` (`catch (<type>) -> dest`)** —— catch 块入口。`dest` 是 catch 参数绑定（运行时一定非 null，类型由 throws 推导）。`TaintedCheckerBase` 看到 `CATCH_HANDLER` 时把 `dest` 标记为 NNE（Non-Null Evidence），并把关联 `THROW` 指令的 taint label 透传到 `dest`。这是为什么 `NullDerefChecker` 不报"catch (NullPointerException e) { e.x ... }"——`e` 被绑死为非 null。
+- **异常到得了哪个 handler** —— CFG builder 按**类型**决定异常流边。`THROW` 带着抛出的类型，`CATCH_HANDLER` 带着声明的类型 ⇒ ⇒ 声明类型不可能是抛出类型实例的 handler **不可达**，而**第一个**接得住它的 handler 会**遮蔽**它后面的那些 ⇒ ⇒ 类型未知时（没有类型的 throw，或异常类型没人知道的调用）**所有 handler 都保持可达** —— 那是不会丢流的过近似。类型关系本身是世界知识 ⇒ ⇒ 所以它由 `ExceptionTypeMatcher` 提供，而不是进 TAC；默认那一份是随 IR 一起发布的目录。
 - **`FINALLY_ENTER` (`finally:`)** —— finally 块入口。CFG builder 给所有 try 内基本块 + 所有 catch 块（以 `THROW` 结尾的）都加一条到 FINALLY 块的 exception edge，模拟"无论 try/catch 怎么走，finally 一定跑"的语义。
 - 旧的 `L_CATCH_<Type>` / `L_FINALLY` 标签名 pattern 保留——Label-based tooling（UnusedLabelChecker / SARIF / cache-key normaliser）不破。
 
