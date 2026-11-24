@@ -403,6 +403,67 @@
 
 ---
 
+### 11.4 本轮落地（2026-11-24）：把 Go 侧车那一层接进 Maven 回归
+
+这一轮**没有**改 Go 侧车的任何一行。改的是**「Go 侧车那一层被量到了吗」**这件事。
+
+#### 11.4.1 起点：台账自己记了这个洞，而它一直没有人补
+
+`14` §7.2.21 里有一句标着「**老实说**」的话：
+
+> 「**本轮的门禁缺口（老实说）**：**Go 侧车的 102 条用例不在任何一张 surefire 允许列表里** —— 因为**它根本不在 maven reactor 里**（`plumb-frontend/pom.xml` 没有 `exec-maven-plugin`，也没有 `go test`）。**⇒ 所以它那一层的门禁是「自己那 102 条」＋「那条元测试」，而它**必须单独跑**。」
+
+**⇒ 而本轮把它变成了一个会红的东西。** 详细记录在 `14` §3.46；这一节只记 Go 这一侧。
+
+#### 11.4.2 两个洞（逐条实测）
+
+| 洞 | 实测 | 后果 |
+|---|---|---|
+| **一：Go 侧车自己的测试从不在回归里跑** | 全仓库检索 `go test`：**只命中 `build.ps1`、README、`smoketest.py`、`.gitignore`**；而 `plumb-frontend/pom.xml` **没有 `exec-maven-plugin`** ⇒ ⇒ **12 个 `*_test.go`（102 个测试函数）在 Maven 回归里是 0 条** | 改 `translator.go` 时，Maven 回归**测不到任何东西** —— 而那一层的读数是**「0 条」**，不是红的 |
+| **二：Java 侧测的是手工构建、不入库的二进制** | `SidecarLocator.buildOutputs`（`:129`）的候选顺序是 `go-sidecar/bin` → `bin/release` → `bin/debug` → `.` ⇒ ⇒ 而本机 `go-sidecar/bin/plumb-go-sidecar`（**Linux 版**）是 **2026-11-07**，而 `translator.go` 是 **2026-11-21** ⇒ ⇒ **⇒ Linux 上第一候选就是那个两周前的旧件** | **改了 Go 源码不重建 ⇒ Java 侧那几条 Go 用例测的是旧代码，而它们报绿** ⇒ ⇒ **⇒ 而 Windows 上第一候选是新件 ⇒ 本机测不出来** |
+
+#### 11.4.3 实现：两个检查（`plumb-frontend/.../go/GoSidecarBuildTest.java`）
+
+| 检查 | 做什么 | 缺什么时 |
+|---|---|---|
+| 侧车自己的测试套件 | 在 `plumb-frontend/go-sidecar` 里跑 **`go test ./...`**，断言退出码 0 且输出里有 `ok` | Go 工具链不在 PATH ⇒ **跳过** |
+| 二进制不比源码旧 | 断言**二进制的 mtime ≥ 最新源码文件的 mtime**（源码文件 = `*.go`（不含 `_test.go`）＋ `go.mod`） | 找不到二进制 ⇒ 跳过；**找到的不是本仓库的构建输出** ⇒ 跳过 |
+
+**⇒ 而「不是本仓库的构建输出就跳过」这一条是必须的**：用户自己安装的 release 二进制**不该被本仓库的源码时间戳判死** ⇒ ⇒
+**⇒ 而环境变量 `PLUMB_GO_SIDECAR` 指过来的那一支，也因此被排除在外**（它本来就不受仓库源码管）。
+
+**⇒ 而缓存出仓库**：`GOCACHE` / `GOMODCACHE` 放在 `%TEMP%\plumb-go-sidecar-build`（与 `build.ps1` 一致），
+`GOPROXY=off`、`GOFLAGS=-mod=mod`、`GOROOT` 指向探测到的工具链 ⇒ ⇒ **⇒ 回归不需要网络**。
+
+#### 11.4.4 变异（两个，红集合逐条对应）
+
+| 变异 | 实测 |
+|---|---|
+| 往侧车源码目录放一条**故意失败**的 Go 测试 | **红**：`Tests run: 1, Failures: 1` ⇒ `BUILD FAILURE` ⇒ 红在 `assertThat(exit).isZero()`（`:88`） |
+| 把 `translator.go` 的 mtime 调到比二进制新 | **红**：`Tests run: 1, Failures: 1` ⇒ `BUILD FAILURE` ⇒ 红在 `:123` |
+
+**⇒ 两个突变都在 `try/finally` 里还原，还原后按 blob hash 核对工作树：`tracked 0 差异 / untracked 只剩那一个新增测试文件`。**
+
+#### 11.4.5 顺带查到的三条 Go 侧的事实
+
+**① 三下标 slice 是真缺口，而且**没有回执**。**
+`translator.go:3294` 的 `translateSlice` 读 `expression.X` / `Low` / `High`，**从不读 `expression.Max`**
+⇒ ⇒ `a[f():g():h()]` 里的 **`h()` 从未求值** ⇒ ⇒ 其中的 sink 不可见（**漏报**）⇒ ⇒ ⇒ **而且这一条没有对应的 drop id** ⇒ ⇒ ⇒ **⇒ 它是「零静默」原则的一个活样本** ⇒ ⇒ ⇒ **⇒ 而它要的东西不大**：第三下标 + 一条回执。
+
+**② 语句层没有静默跳过。** `translator.go:1048`–`1084` 的分派覆盖 **18 种语句**（`AssignStmt` / `DeclStmt` / `ExprStmt` / `ReturnStmt` / `IfStmt` / `ForStmt` / `RangeStmt` / `SwitchStmt` / `TypeSwitchStmt` / `SelectStmt` / `BlockStmt` / `DeferStmt` / `GoStmt` / `BranchStmt` / `LabeledStmt` / `IncDecStmt` / `SendStmt` / `EmptyStmt`），
+而 `default`（`:1084`）**发 `ProblemUnhandledNode`** ⇒ ⇒ **⇒ 认不出来的语句会被报出来，不会安静地消失**。
+
+**③ `ast.Ellipsis` 在整个侧车里零命中。** ⇒ ⇒ 变参调用（`f(args...)`）与 composite literal 的省略**都不被读**
+⇒ ⇒ 而 composite literal 的省略会落进 `default` ⇒ ⇒ **⇒ 它是**响的**（不是静默）；
+⇒ ⇒ ⇒ **⇒ 而变参展开**按 R21 的裁定**是约定不是缺口**（`sink-families.yaml` 的 Go 表明文写着「变参的每个值各占一个实参槽」）。
+
+#### 11.4.6 留在案上的两笔小账
+
+1. **仓库里有两个旧二进制残留**：`go-sidecar/plumb-go-sidecar.exe`（2026-11-20）与 `go-sidecar/bin/plumb-go-sidecar`（2026-11-07，**Linux 版**）⇒ ⇒ 它们都在 `.gitignore` 里（不进版本库），但**留在工作树里会污染本地读数** ⇒ ⇒ **⇒ 而新加的那个检查就是为了让这件事「看得见」**（在 Linux 上它会**红**）。
+2. **时间戳法不是内容法**：`git checkout` 会改 mtime（⇒ 刚 clone 下来时任何旧二进制都会被判「旧」），而 `git checkout` 到更早的提交则判不出来 ⇒ ⇒ **⇒ 更强的做法是「把源码哈希写进二进制」**，那要改侧车的构建脚本与 wire 协议 ⇒ ⇒ **⇒ 本轮不做**。
+
+---
+
 ## 12. 验收口径
 
 | 门禁 | 内容 | 判据 |
@@ -416,6 +477,7 @@
 | **G 两线同形** | Go 与 C# 的 mapper 读取的 wire 字段集合**完全一致** | 两份 `toInstruction` 的字段清单逐项比对，任一差异算门禁失败 |
 | **H 零静默** | 任何「丢了一块」的地方都必须有 drop | 构造测试用例：每个未识别节点都产生 drop；断言「函数体为空但无 drop」不可能出现 |
 | **I 老行为不变** | 同一语料跑新旧两版 | 新增能力生效处 finding **增加**，其它处 finding **不变**（`01` §6 的统一要求） |
+| **J Go 侧车那一层接进回归**（**⚠ R23 新增**） | ① 侧车自己的 `go test ./...` 在 **Maven 回归里**跑；② 侧车二进制**不比源码旧** | `plumb-frontend/.../go/GoSidecarBuildTest.java` 的 2 条用例；**缺工具链 / 缺二进制时跳过** ⇒ ⇒ **⇒ 跳过不是通过** ⇒ ⇒ **⇒ 而这两个洞的形状是「读数是绿的，而读数没有覆盖被声称覆盖的东西」**（§11.4） |
 
 ---
 
