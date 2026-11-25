@@ -474,6 +474,27 @@
                              before it calls an index safe. -->
                         <include>org/plumb/dfa/checkers/taint/R1200ArrayIndexLowerBoundGuardTest.java</include>
 
+                        <!-- CWE-191: the integer-underflow heuristic is
+                             deprecated but still registered by the scan
+                             runner, and the only test that ever pinned it
+                             was archived in a state that cannot compile.
+                             A deprecated checker with no guard drifts
+                             silently. The guard pins the direction split
+                             (an addition of a positive constant is the
+                             overflow checker's case, not this one's), the
+                             guard suppression, and the CWE tag of the
+                             decrement findings this checker solely owns. -->
+                        <include>org/plumb/dfa/checkers/taint/IntUnderflowCwe191GuardTest.java</include>
+
+                        <!-- The side-effect invalidation log is read by a
+                             STRING key ("this:foo"), and the spelling
+                             lives only in the class javadoc. A mismatch
+                             turns every invalidation into silence, and
+                             the silence is a false negative no other
+                             gate notices. The class had no test at all:
+                             the archived ones could not be compiled. -->
+                        <include>org/plumb/dfa/summary/SideEffectConsumerTest.java</include>
+
                         <!-- Sink matching has to tolerate the SIMPLE-NAME callee
                              form. The TAC writes a fully qualified receiver type
                              only when the symbol solver can resolve it; for a
