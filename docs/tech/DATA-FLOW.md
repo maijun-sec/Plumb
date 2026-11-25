@@ -145,7 +145,7 @@ their own independent mechanisms (see below).
 `checkers/taint/` override `checkInstruction` in bulk (there are 75 `extends TaintedCheckerBase` in the whole
 repository, the other two being `BoundaryConstraintChecker` and the base class itself).
 
-- State: `taintedVars: Map<TacVar, String>` (`:267`) and `taintPaths` (`:303`)
+- State: `taintedVars: Map<TacVar, String>` (`:270`) and `taintPaths` (`:303`)
 - Propagation: `propagateMOVE` (`:2097`) and friends, dispatched by instruction kind
 - Sink decision: looks up `SinkFamilyRegistry` by `sinkFamilyKey` (`config/SinkFamilyRegistry.java:22`, in the
   `org.plumb.dfa.config` package), **not** an IFDS framework
@@ -384,8 +384,9 @@ nulls would alias each other and pollute `mayAlias`):
 
 ## 5. Z3: false-positive filtering only
 
-Z3 has exactly **one** call site in the whole engine, `TaintedCheckerBase.java:5404`, on the sink
-reporting path.
+Z3 has exactly **three** call sites in the whole engine, all of them in `TaintedCheckerBase.java`:
+`TaintedCheckerBase.java:5406` on the sink reporting path, and `TaintedCheckerBase.java:5726` and
+`TaintedCheckerBase.java:5734` at a call site.
 
 The reachability check happens in **one** place, `TaintedCheckerBase.isPathSuppressed`, on the sink
 reporting path. Both sink paths go through it: the CALL path and the constructor path
@@ -417,6 +418,58 @@ about whether this source reaches the sink, and two guards recorded at different
 function are not both in force at the sink. Both restrictions exist so that the check cannot
 suppress a finding that is real.
 
+### 5.1 The cross-function check: a callee's PRECONDITION
+
+The two call sites at `:5726` and `:5734` answer a different question: **can the call at this
+instruction complete normally?** They are the only place where a contradiction across a function
+boundary is possible at all, and the reason is worth stating precisely.
+
+A callee can publish facts about its own variables -- the guards it holds, the conditions its
+return value satisfies. Those facts are about **the callee's variables, at the callee's exit**,
+while the caller's guards are about **the caller's source variable, at the caller's sink**.
+Conjoining them is a statement about two different variables at two different points, so it is not
+a contradiction even when the solver says UNSAT: it would be a coincidence of names. That is why
+the mechanism existed and never fired -- not a missing line, a shape that cannot contradict.
+
+The one cross-function fact that CAN contradict the caller's guards is a **precondition**: the
+callee says "this argument has to satisfy P, or the call throws".
+
+```java
+static String check(String s, int lim) {
+  if (lim <= 0) {
+    throw new IllegalArgumentException("limit must be positive");
+  }
+  return s;
+}
+```
+
+The callee publishes the requirement by recording the **negation of the guard in force at each
+guarded throw** (`recordFormalPreconditions`), against the formal parameter it constrains. The
+caller then, at the call site (`callCannotCompleteNormally`):
+
+1. instantiates the precondition on the argument **this call** passes -- the callee's formal name
+   is replaced by the caller's variable name, so the two sides are the same variable;
+2. conjoins it with the caller's own guards on that argument, taken from the **path-scoped** set
+   (the guards in force at the call, not the function-wide union -- see below);
+3. asks the solver, and also asks the arithmetic contradiction check, because the pure-Java
+   fallback bridge treats an unbound variable as free and can never decide this;
+4. concludes: the callee throws here, so the call never returns.
+
+A call that never returns does not assign its destination and does not write into the caller's
+variables. So nothing the callee returns reaches the caller's sink, and the taint does not travel
+through the call. `Operation.SolverZ3Precondition` carries the condition in two forms: the
+predicate string for the solver, and the structured comparisons for the arithmetic check.
+
+The precondition is a **necessary** condition, so leaving a throw out can only make it weaker.
+Two further restrictions keep the check from suppressing a real finding:
+
+- Only **guarded** throws count. An unconditional throw is a different and stronger statement
+  ("this function never completes normally"), and it is left to the conservative reading.
+- Several preconditions for one formal are **alternatives**, not a conjunction: the summary cache
+  merges same-signature functions by set union, and a codebase has many functions that share one
+  signature. The call completes normally when ANY of the variants does, so the disjunction is the
+  sound reading and a vacuous one is refused.
+
 - `pathConditionForSink` (`:5364`) has a base-class implementation: the conflicting pair as a
   predicate, so the reader of a finding can see why it was suppressed. A subclass may override it
   with a predicate the solver can evaluate.
@@ -432,7 +485,7 @@ fires; the other modes turn it on. The engine also skips collecting the guards w
 off, because the collection is real work per instruction. An unrecognised value is treated as
 `full`, so a typo in a configuration file keeps the filter rather than silently dropping it.
 
-### 5.1 PathCondition and GuardTracker are two different things
+### 5.2 PathCondition and GuardTracker are two different things
 
 | | PathCondition | GuardTracker |
 | --- | --- | --- |

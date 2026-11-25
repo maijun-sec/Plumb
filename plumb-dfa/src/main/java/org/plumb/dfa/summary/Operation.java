@@ -56,6 +56,7 @@ public sealed interface Operation
         Operation.HasUnmodelledBehavior,
         Operation.UnmodelledCall,
         Operation.SolverZ3Predicate,
+        Operation.SolverZ3Precondition,
         Operation.PointsToPropagate,
         Operation.PersistsParam,
         Operation.RangeSeed {
@@ -237,6 +238,69 @@ public sealed interface Operation
     public SolverZ3Predicate {
       Objects.requireNonNull(predicate, "predicate");
       pathVars = pathVars == null ? java.util.Set.of() : java.util.Set.copyOf(pathVars);
+    }
+  }
+
+  /**
+   * A PRECONDITION attached to a function's summary: the condition one of its formal parameters has
+   * to satisfy for the call to complete NORMALLY.
+   *
+   * <p>A callee that validates its argument says so by throwing:
+   *
+   * <pre>
+   *   static String check(String s, int limit) {
+   *     if (limit &lt;= 0) { throw new IllegalArgumentException(); }
+   *     return s;
+   *   }
+   * </pre>
+   *
+   * <p>The caller cannot see that body, so the callee has to publish what it requires: {@code limit
+   * &gt; 0}. The caller then instantiates the precondition on the argument it passes and asks the
+   * solver whether that argument can also satisfy the caller's own guards. When the two contradict,
+   * the call cannot complete normally on this path -- the callee throws -- so nothing the callee
+   * returns reaches the caller's sink, and nothing the callee writes into the caller's variables
+   * happens either.
+   *
+   * <p><b>Why this exists separately from {@link SolverZ3Predicate}.</b> A {@code
+   * SolverZ3Predicate} says "this holds" about a variable the callee owns; a precondition says
+   * "this MUST hold" about a variable the caller owns. Only the second can contradict the caller's
+   * own guards, because only the second is about the same variable, at the same point in the
+   * program. That is the whole reason the cross-function solver had no effect before: the two sides
+   * were talking about different variables.
+   *
+   * <p><b>Why several preconditions for one formal are alternatives.</b> The summary cache merges
+   * the summaries of same-signature functions, and it merges by set union. So two preconditions
+   * recorded against one formal are two VARIANTS' requirements, and the call completes normally
+   * when EITHER of them completes normally -- a disjunction, not a conjunction. The conjunction
+   * inside one function is therefore done when the function records the operation: one operation
+   * per formal, holding everything that function requires of it.
+   *
+   * <p>The predicate string is in the solver's grammar (see {@code LocalSolverBridge}); a
+   * hand-written operator name would be unparseable, and the bridge answers "satisfiable" for
+   * anything it cannot parse.
+   *
+   * @param predicate the condition, in the solver's grammar
+   * @param pathVars the variables the predicate mentions -- for a precondition, the formal
+   *     parameter it constrains, so the caller knows which name to substitute
+   * @param requirements the same condition, STRUCTURED: the comparisons that make up the
+   *     precondition, in the shape {@code GuardPredicateTranslator} reasons about. The solver needs
+   *     the string; the arithmetic contradiction check needs the structure, because a contradiction
+   *     over a free variable ("x &gt; 0 &amp;&amp; x &lt;= 0") is decidable by interval arithmetic
+   *     but NOT by the pure-Java fallback bridge, which answers "satisfiable" for any variable it
+   *     cannot bind.
+   */
+  record SolverZ3Precondition(
+      String predicate,
+      java.util.Set<String> pathVars,
+      java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> requirements)
+      implements Operation {
+    public SolverZ3Precondition {
+      Objects.requireNonNull(predicate, "predicate");
+      pathVars = pathVars == null ? java.util.Set.of() : java.util.Set.copyOf(pathVars);
+      requirements =
+          requirements == null
+              ? java.util.List.of()
+              : java.util.Collections.unmodifiableList(new java.util.ArrayList<>(requirements));
     }
   }
 

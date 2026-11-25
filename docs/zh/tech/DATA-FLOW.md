@@ -146,7 +146,7 @@ checker** 自己实现 —— 污点传播在 `taint/TaintedCheckerBase.propagat
 `checkInstruction`（全仓库共 48 个 `extends TaintedCheckerBase`，
 另外两个是 `BoundaryConstraintChecker` 和基类自身）。
 
-- 状态：`taintedVars: Map<TacVar, String>`（`:267`）与 `taintPaths`（`:303`）
+- 状态：`taintedVars: Map<TacVar, String>`（`:270`）与 `taintPaths`（`:303`）
 - 传播：`propagateMOVE`（`:2097`）等按指令种类分派
 - sink 判定：按 `sinkFamilyKey` 查 `SinkFamilyRegistry`（`config/SinkFamilyRegistry.java:22`，在
   `org.plumb.dfa.config` 包），**不是** IFDS 框架
@@ -377,7 +377,8 @@ null 会互相 alias，污染 `mayAlias`）：
 
 ## 5. Z3：只做误报过滤
 
-Z3 在整个引擎里只有**一个**调用点，`TaintedCheckerBase.java:5404`，位于 sink 上报路径上。
+Z3 在整个引擎里只有**三个**调用点，都在 `TaintedCheckerBase.java` 里：
+`:5406` 在 sink 上报路径上，`:5726` 与 `:5734` 在调用点上。
 
 可达性判定在**一个**地方完成，`TaintedCheckerBase.isPathSuppressed`，位于 sink 上报路径上。
 两条 sink 路径都经过它：CALL 路径和构造器路径（`checkSinkAtNew`）——
@@ -406,6 +407,54 @@ if (!composed.isEmpty()) {
 而函数中不同位置记录的两个守卫，在 sink 处也不同时成立。这两条限制都是为了保证
 这个判定不会抑制一个真实存在的 finding。
 
+### 5.1 跨函数判定：被调用方的「前置条件」
+
+`:5726` 与 `:5734` 这两个调用点回答的是另一个问题：**这次调用能不能正常返回？**
+它们是唯一可能产生「跨函数矛盾」的地方，原因值得说清楚。
+
+被调用方可以发布关于**它自己变量**的事实——它持有的守卫、它的返回值满足的条件。
+而这些事实是关于**被调用方的变量、在被调用方的出口处**的；调用方的守卫是关于
+**调用方的 source 变量、在调用方的 sink 处**的。把两者合取，是把「两个不同变量、
+两个不同时刻」放在一起说，所以即使求解器答 UNSAT 它也不是矛盾——那只是名字碰巧相同。
+这正是「机制在、却不生效」的原因：**不是少了一行，而是形状上根本无法互相矛盾。**
+
+唯一能与调用方守卫矛盾的跨函数事实是**前置条件**：被调用方说「这个实参必须满足 P，否则调用抛异常」。
+
+```java
+static String check(String s, int lim) {
+  if (lim <= 0) {
+    throw new IllegalArgumentException("limit must be positive");
+  }
+  return s;
+}
+```
+
+被调用方通过记录**每个受守卫的抛出点处生效守卫的否定**来发布这个要求
+（`recordFormalPreconditions`），并挂在它所约束的形参上。调用方随后在调用点
+（`callCannotCompleteNormally`）：
+
+1. 把前置条件实例化到**本次调用**传下去的实参上——把被调用方的形参名换成调用方的变量名，
+   于是两边说的是同一个变量；
+2. 与调用方自己在这个实参上的守卫合取，取的是**路径作用域**的那一组
+   （在调用点生效的守卫，不是函数级的并集——见下）；
+3. 问求解器，同时也问算术矛盾判定——因为纯 Java 的回退 bridge 把未绑定变量当作自由变量，
+   永远判不了这一类矛盾；
+4. 得出结论：被调用方在这里抛异常，所以这次调用不会返回。
+
+一个不会返回的调用不会给它的目标变量赋值，也不会写进调用方的变量。
+所以被调用方返回的东西到不了调用方的 sink，污点也不会穿过这次调用。
+`Operation.SolverZ3Precondition` 用两种形式携带这个条件：给求解器用的谓词字符串，
+以及给算术判定用的结构化比较。
+
+前置条件是**必要**条件，所以漏掉一个抛出点只会让它变弱，不会变强。
+另有两条限制，保证这个判定不会抑制真实存在的 finding：
+
+- 只有**受守卫的**抛出点算数。无条件的抛出是另一条（也更强）的陈述
+  （「这个函数永远不会正常返回」），保守读法把它留给既有语义。
+- 同一形参上的多个前置条件是**择一**，不是合取：摘要缓存按集合并集合并同签名的函数，
+  而一个代码库里有很多函数共用同一个签名。任意一个变体能正常返回，这次调用就能正常返回，
+  所以析取才是可靠的读法；空析取会被拒绝。
+
 - `pathConditionForSink`（`:5364`）在基类里就有实现：把那对冲突的守卫作为谓词返回，
   这样读 finding 的人能看出它为什么被抑制。子类可以覆写它，提供求解器能求值的谓词。
 - 语义明确：这个判定**只用于抑制误报，绝不用于发现缺陷**（`:3237`）
@@ -418,7 +467,7 @@ if (!composed.isEmpty()) {
 其余档位开启它。判定关闭时，引擎也会跳过收集守卫 —— 因为收集本身是每条指令的真实开销。
 无法识别的档位按 `full` 处理，所以配置文件里的拼写错误会保留过滤器，而不是悄悄丢掉它。
 
-### 5.1 PathCondition 与 GuardTracker 是两套东西
+### 5.2 PathCondition 与 GuardTracker 是两套东西
 
 | | PathCondition | GuardTracker |
 | --- | --- | --- |

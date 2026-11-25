@@ -982,49 +982,58 @@ def main():
             % (rel_file, start, end, start))
     note("checked %d file-anchored range citation(s)" % range_checked)
 
-    # (11) The Z3 call site: the document says Z3 has exactly one call
-    #      site in the engine, and cites it.
+    # (11) The Z3 call sites: the document says how many there are, and cites
+    #      each one.
     #
-    #      The call site is the one invocation of the bridge on the sink
-    #      reporting path: `solverBridge.check(composed, ...)`. The
-    #      document's citation has to point at THAT line -- a citation
-    #      that lands on a javadoc or a stray brace sends the reader to
-    #      the wrong place while the sentence still reads true.
+    #      There are two kinds, and the second kind is the one that makes a
+    #      contradiction across a function boundary possible at all:
+    #
+    #        - the sink-path one (`isPathSuppressed`): "can this source reach
+    #          this sink?". Both sides are about the caller's own variables,
+    #          so the arithmetic contradiction decides it before the solver is
+    #          even asked.
+    #        - the call-site ones (`callCannotCompleteNormally`): "can this
+    #          call complete normally here?". The callee's PRECONDITION is
+    #          instantiated on the argument the call passes, so it and the
+    #          caller's own guards are about the same variable at the same
+    #          point -- the only shape in which two facts can contradict each
+    #          other across a function boundary.
+    #
+    #      The document's citations have to point at those lines: a citation
+    #      that lands on a javadoc or a stray brace sends the reader to the
+    #      wrong place while the sentence still reads true.
     bridge = DFA / "taint" / "TaintedCheckerBase.java"
     if bridge.is_file():
         body = code_lines(read(bridge))
         call_sites = [i for i, line in enumerate(body, 1)
                       if re.search(r"solverBridge\.check\s*\(", line)]
-        if len(call_sites) != 1:
+        m = re.search(r"Z3 has exactly \*\*(\w+)\*\* call site", doc)
+        if not m:
             failures.append(
-                "the engine has %d solver-bridge call site(s) in "
-                "TaintedCheckerBase.java, but the document says exactly one"
-                % len(call_sites))
+                "the document no longer states the number of Z3 call sites -- the "
+                "check cannot verify it")
         else:
-            m = re.search(r"TaintedCheckerBase\.java:(\d+)", doc)
-            if not m:
+            stated = m.group(1)
+            expected = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5}.get(stated)
+            if expected is None or expected != len(call_sites):
                 failures.append(
-                    "the document does not cite the Z3 call site -- the "
-                    "check cannot verify it")
+                    "the engine has %d solver-bridge call site(s) in "
+                    "TaintedCheckerBase.java, but the document says %s"
+                    % (len(call_sites), stated))
             else:
-                cited = int(m.group(1))
-                if abs(cited - call_sites[0]) > LINE_TOLERANCE:
+                cited = set(int(x) for x in
+                            re.findall(r"TaintedCheckerBase\.java:(\d+)", doc))
+                missing = [c for c in call_sites
+                           if not any(abs(c - q) <= LINE_TOLERANCE for q in cited)]
+                if missing:
                     failures.append(
-                        "the document cites the Z3 call site at :%d, but it "
-                        "is at :%d -- a reader following the citation lands "
-                        "%d lines away"
-                        % (cited, call_sites[0], abs(cited - call_sites[0])))
+                        "the document does not cite the Z3 call site(s) at %s -- a "
+                        "reader following the citations lands in the wrong place"
+                        % ", ".join(":%d" % c for c in missing))
                 else:
-                    note("checked the Z3 call-site citation (:%d)"
-                         % call_sites[0])
+                    note("checked %d Z3 call-site citation(s)" % len(call_sites))
     else:
         failures.append("%s does not exist" % bridge)
-
-    m = re.search(r"Z3 has exactly \*\*one\*\* call site", doc)
-    if not m:
-        failures.append(
-            "the document no longer states the number of Z3 call sites -- the "
-            "check cannot verify it")
 
     if failures:
         print()

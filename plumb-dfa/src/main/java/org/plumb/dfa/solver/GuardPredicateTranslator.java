@@ -158,6 +158,36 @@ public final class GuardPredicateTranslator {
   }
 
   /**
+   * The comparison that is the NEGATION of {@code op}, or {@code null} when there is none.
+   *
+   * <p>Used to turn a guard into the condition that must hold for the guarded code NOT to run: the
+   * guard {@code x <= 0} says "the body runs when x &lt;= 0", so the negation {@code x > 0} says
+   * "the body does not run only when x > 0".
+   *
+   * <p>Only the six comparisons the grammar has are negatable. {@code x != 0} negates to {@code x
+   * == 0} and the other way round; the order comparisons swap.
+   */
+  public static BinaryOperator negate(BinaryOperator op) {
+    if (op == null) return null;
+    switch (op) {
+      case LT:
+        return BinaryOperator.GE;
+      case LE:
+        return BinaryOperator.GT;
+      case GT:
+        return BinaryOperator.LE;
+      case GE:
+        return BinaryOperator.LT;
+      case EQ:
+        return BinaryOperator.NE;
+      case NE:
+        return BinaryOperator.EQ;
+      default:
+        return null;
+    }
+  }
+
+  /**
    * Normalise a literal into something the solver can read, or {@code null} when it cannot.
    *
    * <p>Numbers pass through as they are. {@code null} and {@code true}/{@code false} become the

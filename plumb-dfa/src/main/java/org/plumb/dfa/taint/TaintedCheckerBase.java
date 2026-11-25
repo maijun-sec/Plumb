@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.plumb.dfa.config.CheckerConfig;
 import org.plumb.dfa.config.EngineConfig;
 import org.plumb.dfa.config.SinkFamily;
@@ -51,6 +52,7 @@ import org.plumb.reporter.trace.OperandRef;
 import org.plumb.reporter.trace.Trace;
 import org.plumb.reporter.trace.TraceBuilder;
 import org.plumb.reporter.trace.TraceNode;
+import org.plumb.tac.ir.BinaryOperator;
 import org.plumb.tac.ir.SourceLanguage;
 import org.plumb.tac.ir.TacAccessPath;
 import org.plumb.tac.ir.TacBasicBlock;
@@ -5651,6 +5653,173 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
+   * Can the call at this instruction NOT complete normally on this path?
+   *
+   * <p>The callee may publish a PRECONDITION on one of its formal parameters: "this parameter has
+   * to satisfy P, or the call throws". The precondition is instantiated on the argument THIS call
+   * passes and conjoined with the caller's own guards on that argument -- the two are about the
+   * same variable, at the same point, so they can contradict each other. When they do, the solver
+   * says UNSAT, and the answer is: the callee throws here, so the call never returns.
+   *
+   * <p><b>Why the answer matters.</b> A call that never returns does not assign its destination,
+   * and does not write into the caller's variables. So nothing the callee returns can reach the
+   * caller's sink, and a taint that would have travelled through this call does not travel through
+   * it. That is the ONLY cross-function contradiction the taint path can use: a guard the callee
+   * holds on its own variables, or on its return value, is about a variable the caller knows
+   * nothing about, at a point the caller's own guards do not describe.
+   *
+   * <p><b>Why the caller's guards must be path-scoped.</b> The function-wide union is a statement
+   * about no path at all: {@code n > 5} from one branch and {@code n < 3} from another can both
+   * hold, just not at the same time. Conjoining that union with the precondition would make the
+   * conjunction UNSAT for a path that exists, and suppress a real finding.
+   *
+   * @param ins the CALL instruction
+   * @param ctx the analysis context
+   * @param calleeSummary the callee's CONTEXT-FREE summary
+   * @return true when the callee provably throws at this call
+   */
+  private boolean callCannotCompleteNormally(
+      TacInstruction ins, AnalysisContext ctx, FunctionSummary calleeSummary) {
+    if (solverBridge == null || ins == null || ins.args == null || ctx == null) return false;
+    if (calleeSummary == null) return false;
+    if (!pathVerificationEnabled()) return false;
+    for (Map.Entry<Integer, Set<Operation>> entry : calleeSummary.paramOps().entrySet()) {
+      int formal = entry.getKey();
+      int callArgIdx = callArgIndexForFormal(ins, formal);
+      if (callArgIdx < 0 || callArgIdx >= ins.args.size()) continue;
+      if (!(ins.args.get(callArgIdx) instanceof TacOperand.TacVar av)) continue;
+      // The alternatives: several preconditions for one formal are the requirements of
+      // several same-signature variants, and the call completes normally when ANY of them does.
+      List<String> alternatives = new ArrayList<>();
+      List<List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact>> alternativeFacts =
+          new ArrayList<>();
+      for (Operation op : entry.getValue()) {
+        if (op instanceof Operation.SolverZ3Precondition pre) {
+          String instantiated = instantiateOn(pre, av.name());
+          if (instantiated != null && !instantiated.isEmpty()) {
+            alternatives.add(instantiated);
+            alternativeFacts.add(instantiateFacts(pre, av.name()));
+          }
+        }
+      }
+      if (alternatives.isEmpty()) continue;
+      // The caller's own guards on the argument, at this call. Null means the position is
+      // unknown, and then no reasoning is possible.
+      List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> facts =
+          pathScopedGuardFacts(av, ctx);
+      if (facts == null || facts.isEmpty()) continue;
+      String callerCondition = org.plumb.dfa.solver.GuardPredicateTranslator.conjunction(facts);
+      if (callerCondition.isEmpty()) continue;
+      // The solver, and the arithmetic, are both asked. Either one deciding that the
+      // conjunction is unsatisfiable is enough to conclude that the callee throws here.
+      //
+      // The solver is the exact answer, when it is there. The arithmetic is the portable one:
+      // the pure-Java fallback bridge treats a variable it cannot bind as free and answers
+      // "satisfiable", so on a machine without the Z3 native library the solver would never see
+      // this contradiction at all. A contradiction between two bounds on the SAME variable is a
+      // statement about arithmetic, and interval arithmetic decides it exactly.
+      String alternativesCondition = "(" + String.join(") || (", alternatives) + ")";
+      // The alternatives must be satisfiable on their own. A vacuous disjunction would make
+      // EVERY call look like a throwing call, which would be a false suppression.
+      boolean alternativesSatisfiable = true;
+      for (String alternative : alternatives) {
+        if (solverBridge.check("(" + alternative + ")", java.util.Map.of())
+            == SolverZ3Bridge.Result.UNSAT) {
+          alternativesSatisfiable = false;
+          break;
+        }
+      }
+      if (!alternativesSatisfiable) continue;
+      String composed = "(" + alternativesCondition + ") && (" + callerCondition + ")";
+      if (solverBridge.check(composed, java.util.Map.of()) == SolverZ3Bridge.Result.UNSAT) {
+        return true;
+      }
+      for (List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> alternative :
+          alternativeFacts) {
+        List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> together =
+            new ArrayList<>(facts);
+        together.addAll(alternative);
+        if (org.plumb.dfa.solver.GuardPredicateTranslator.findContradiction(together) != null) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * The precondition's structured requirements, with the callee's formal parameter name replaced by
+   * the caller's variable name.
+   */
+  private static List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> instantiateFacts(
+      Operation.SolverZ3Precondition pre, String actualName) {
+    List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> out = new ArrayList<>();
+    if (pre == null || actualName == null || actualName.isEmpty()) return out;
+    for (org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact f : pre.requirements()) {
+      if (f == null) continue;
+      out.add(
+          new org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact(
+              actualName, f.operator(), f.literal(), f.arrayLengthBound()));
+    }
+    return out;
+  }
+
+  /**
+   * The precondition with the callee's formal parameter name replaced by the caller's variable
+   * name, so that the two sides of the conjunction are about the same variable.
+   *
+   * @param pre the callee's precondition
+   * @param actualName the caller's variable name for the argument
+   * @return the instantiated predicate, or {@code null} when it cannot be instantiated
+   */
+  private static String instantiateOn(Operation.SolverZ3Precondition pre, String actualName) {
+    if (pre == null || actualName == null || actualName.isEmpty()) return null;
+    String predicate = pre.predicate();
+    if (predicate == null || predicate.isEmpty()) return null;
+    Set<String> vars = pre.pathVars();
+    if (vars == null || vars.size() != 1) {
+      // The caller does not know which callee variable the predicate is about, so it cannot
+      // substitute. Refusing is the conservative answer.
+      return null;
+    }
+    String formalName = vars.iterator().next();
+    if (formalName == null || formalName.isEmpty()) return null;
+    if (formalName.equals(actualName)) return predicate;
+    // Whole-word replacement: the name must not be substituted inside a longer identifier.
+    String pattern =
+        "(?<![A-Za-z0-9_])" + java.util.regex.Pattern.quote(formalName) + "(?![A-Za-z0-9_])";
+    return predicate.replaceAll(pattern, java.util.regex.Matcher.quoteReplacement(actualName));
+  }
+
+  /**
+   * The guards in force at the current instruction, about one variable, or {@code null} when the
+   * position is not known.
+   *
+   * <p>The difference from {@link #sourceGuardFacts} matters here: that one falls back to the
+   * function-wide union when the position is unknown, which is the safe answer for a question about
+   * "can this source reach this sink". It is NOT the safe answer for a question about whether the
+   * CALLER's own guards contradict the callee's precondition, because there a contradiction would
+   * suppress a finding.
+   */
+  private List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> pathScopedGuardFacts(
+      TacOperand.TacVar av, AnalysisContext ctx) {
+    if (ctx == null || av == null) return null;
+    org.plumb.dfa.taint.GuardTracker tracker = ctx.functionGuards();
+    if (tracker == null) return null;
+    List<org.plumb.dfa.taint.GuardTracker.Guard> guards = pathScopedGuards(tracker, ctx);
+    if (guards == null) return null;
+    List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> out = new ArrayList<>(2);
+    for (org.plumb.dfa.taint.GuardTracker.Guard g : guards) {
+      if (g == null) continue;
+      if (!g.boundedVar().name().equals(av.name())) continue;
+      out.add(
+          new org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact(
+              g.boundedVar().name(), g.op(), g.literalDescription(), g.isArrayLengthBound()));
+    }
+    return out;
+  }
+
+  /**
    * Project a callee's summary through this call site's binding.
    *
    * <p>The binding is computed from the call site's own tainted arguments: each tainted user
@@ -5746,6 +5915,23 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     CalleeSummaryKeys.Resolution resolution =
         CalleeSummaryKeys.lookup(ctx.summaryCache(), calleeSig, callerEnc, ctx.classHierarchy());
     FunctionSummary calleeSummary = resolution.summary();
+    // Can this call complete normally on this path?
+    //
+    // The callee may publish a PRECONDITION: "formal i has to satisfy P, or the call throws".
+    // The precondition is instantiated on the argument THIS call passes, and conjoined with the
+    // caller's own guards on that argument. When the two contradict, the callee throws here, so
+    // the call never returns: nothing the callee returns reaches the caller's sink, and nothing
+    // the callee writes into the caller's variables happens either.
+    //
+    // The CONTEXT-FREE summary is the right source for the precondition, not the projected one.
+    // The projection keeps a parameter's operations only when this call site feeds that
+    // parameter with taint -- but a precondition is about whether the call completes at all,
+    // which does not depend on the taint. It is also a property of the CALLEE, so the union
+    // over the same-signature variants is the right reading: the call completes normally when
+    // ANY of the variants completes normally.
+    if (callCannotCompleteNormally(ins, ctx, calleeSummary)) {
+      return;
+    }
     // The context-sensitive projection.
     //
     // The summary above is the CALLEE's context-free statement about itself: "this function
@@ -6426,18 +6612,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         break;
       }
     }
-    // Accumulate any
-    // SolverZ3Predicate from the callee's
-    // summary. The callee may have
-    // recorded a path condition for
-    // each param or for the return
-    // value; both contribute to the
-    // caller's overall path
-    // satisfiability check.
+    // The call's own operations: the return value's object identity, and the per-parameter
+    // effects the callee had.
     for (Operation op : calleeSummary.returnOps()) {
-      if (op instanceof Operation.SolverZ3Predicate pred) {
-        addPathConditionFragment(pred.predicate());
-      }
       if (op instanceof Operation.PointsToPropagate pts) {
         // The callee's return value carries an OBJECT IDENTITY, and the caller's
         // destination inherits it.
@@ -6453,13 +6630,17 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         applyReturnPointsTo(ins, ctx, pts);
       }
     }
-    for (var entry : calleeSummary.paramOps().entrySet()) {
-      for (Operation op : entry.getValue()) {
-        if (op instanceof Operation.SolverZ3Predicate pred) {
-          addPathConditionFragment(pred.predicate());
-        }
-      }
-    }
+    // The callee's per-parameter effects are consumed above, by the projection loop that
+    // re-taints the caller's arguments.
+    //
+    // What is NOT done here is feeding the callee's own path predicates into the caller's
+    // path-condition list. Those predicates are about the CALLEE's variables, at the CALLEE's
+    // exit; the caller's path condition is about the caller's source variable, at the caller's
+    // sink. Conjoining them is a statement about two different variables at two different
+    // points, so it is not a contradiction even when the solver says UNSAT -- it would be a
+    // coincidence of names. The one cross-function fact that CAN contradict the caller's own
+    // guards is the callee's PRECONDITION, and it is handled at the call site, where the
+    // argument and the caller's guards are the same variable.
     // Walk the callee's fieldOps
     // and seed the caller's per-function
     // FieldTaintTracker. For each
@@ -7096,8 +7277,136 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     //    callers see them via the
     //    cross-function propagation.
     emitSummaryOps(b, fn);
+    // 4. The PRECONDITION this function places on each of its formal parameters: what has to
+    //    hold for the call to complete normally.
+    //
+    //    This is the one cross-function fact the caller can contradict. A guard the callee
+    //    holds on its own variables, or on its return value, is about a variable the caller
+    //    knows nothing about, at a point in the program the caller's own guards do not
+    //    describe -- so conjoining the two can never be a contradiction. A precondition is
+    //    about the ARGUMENT, at the CALL, which is exactly where the caller's guards about
+    //    that argument also live.
+    recordFormalPreconditions(b, fn, ctx);
     FunctionSummary built = b.build();
     return built;
+  }
+
+  /**
+   * Publish, on the summary, the precondition this function places on each of its formal
+   * parameters: the condition that has to hold for the call to complete NORMALLY.
+   *
+   * <p>A callee that validates its argument says so by throwing:
+   *
+   * <pre>
+   *   static String check(String s, int limit) {
+   *     if (limit &lt;= 0) { throw new IllegalArgumentException(); }
+   *     return s;
+   *   }
+   * </pre>
+   *
+   * <p>The caller cannot see that body, so the callee has to publish what it requires: {@code limit
+   * > 0}. The caller then instantiates the precondition on the argument it passes and asks the
+   * solver whether that argument can also satisfy the caller's own guards. When the two contradict,
+   * the call CANNOT complete normally on this path -- the callee throws -- so nothing the callee
+   * returns reaches the caller's sink, and nothing the callee writes into the caller's variables
+   * happens either.
+   *
+   * <p><b>Why only guarded throws count.</b> An unconditional throw says the function never
+   * completes normally, which is a different and stronger statement; it is left to the conservative
+   * reading. A precondition published here is a NECESSARY condition, so leaving a throw out can
+   * only make it weaker, never stronger.
+   *
+   * <p><b>Why the guards come from the path-scoped set.</b> The guards in force at the throw are
+   * the ones that hold on the path that reaches it. The function-wide union would be a statement
+   * about no path at all, and a caller that treated it as one would suppress findings on paths that
+   * exist.
+   *
+   * <p><b>Why a function that never returns publishes nothing.</b> Such a function has no path on
+   * which the call completes normally, so a precondition about it says nothing the caller did not
+   * already have to assume.
+   *
+   * @param b the summary builder
+   * @param fn the function being summarised
+   * @param ctx the analysis context, which holds the path-scoped guard facts
+   */
+  protected static void recordFormalPreconditions(
+      FunctionSummary.Builder b, TacFunction fn, AnalysisContext ctx) {
+    if (b == null || fn == null || ctx == null) return;
+    List<TacOperand.TacVar> params = fn.params();
+    if (params == null || params.isEmpty()) return;
+    org.plumb.dfa.taint.GuardTracker guards = ctx.functionGuards();
+    if (guards == null || !guards.hasRecordedPositions()) return;
+    // A function that cannot return normally has no precondition to publish.
+    boolean hasReturn = false;
+    int count = fn.instructionCount();
+    for (int i = 0; i < count; i++) {
+      TacInstruction ins = fn.instructionAt(i);
+      if (ins != null && ins.kind == TacInstruction.Kind.RETURN) {
+        hasReturn = true;
+        break;
+      }
+    }
+    if (!hasReturn) return;
+    // The condition each formal has to satisfy, gathered from the throws that are guarded by a
+    // comparison on it. The negation of the guard is the condition: "if limit <= 0 we throw"
+    // means "the call completes normally only when limit > 0".
+    Map<Integer, List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact>> requirements =
+        new java.util.LinkedHashMap<>();
+    Map<Integer, List<String>> predicates = new java.util.LinkedHashMap<>();
+    Map<Integer, String> requiredVar = new java.util.LinkedHashMap<>();
+    for (int i = 0; i < count; i++) {
+      TacInstruction ins = fn.instructionAt(i);
+      if (ins == null || ins.kind != TacInstruction.Kind.THROW) continue;
+      List<org.plumb.dfa.taint.GuardTracker.Guard> at = guards.guardsAt(i);
+      if (at == null || at.isEmpty()) continue;
+      for (org.plumb.dfa.taint.GuardTracker.Guard g : at) {
+        if (g == null || g.op() == null) continue;
+        String varName = g.boundedVar().name();
+        int formal = formalIndexOf(params, varName);
+        if (formal < 0) continue;
+        BinaryOperator negated = org.plumb.dfa.solver.GuardPredicateTranslator.negate(g.op());
+        if (negated == null) continue;
+        String dsl =
+            org.plumb.dfa.solver.GuardPredicateTranslator.translate(
+                varName, negated, g.literalDescription(), g.isArrayLengthBound());
+        if (dsl == null || dsl.isEmpty()) continue;
+        List<String> list = predicates.computeIfAbsent(formal, k -> new java.util.ArrayList<>());
+        if (list.contains(dsl)) continue;
+        list.add(dsl);
+        requirements
+            .computeIfAbsent(formal, k -> new java.util.ArrayList<>())
+            .add(
+                new org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact(
+                    varName, negated, g.literalDescription(), g.isArrayLengthBound()));
+        requiredVar.put(formal, varName);
+      }
+    }
+    for (Map.Entry<Integer, List<String>> e : predicates.entrySet()) {
+      // ONE operation per formal, holding everything this function requires of it. The summary
+      // cache merges same-signature functions by set union, and the caller reads several
+      // operations for one formal as ALTERNATIVES (variants of the same signature), so the
+      // conjunction has to happen here, where it is known.
+      String conjunction = String.join(" && ", e.getValue());
+      String varName = requiredVar.get(e.getKey());
+      b.recordParamOp(
+          e.getKey(),
+          new Operation.SolverZ3Precondition(
+              conjunction,
+              varName == null ? java.util.Set.of() : java.util.Set.of(varName),
+              requirements.get(e.getKey())));
+    }
+  }
+
+  /**
+   * The index of the formal parameter with this name, or {@code -1} when the name is not a formal.
+   */
+  private static int formalIndexOf(List<TacOperand.TacVar> params, String name) {
+    if (params == null || name == null) return -1;
+    for (int i = 0; i < params.size(); i++) {
+      TacOperand.TacVar p = params.get(i);
+      if (p != null && name.equals(p.name())) return i;
+    }
+    return -1;
   }
 
   /**
