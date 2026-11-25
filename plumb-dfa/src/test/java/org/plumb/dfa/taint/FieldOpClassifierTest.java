@@ -41,17 +41,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.HashMap;
 import java.util.Map;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacType;
 
-@Disabled(
-    "This class MEASURES: it walks a corpus, reports the numbers, and writes them out. It has"
-        + " no assertion, so a green here says nothing about the engine -- which is why it is"
-        + " not a CI guard. The old reason (a TacProgram import drift) was false: the import is"
-        + " org.plumb.tac.ir.TacProgram and that type exists. Run it explicitly when the numbers"
-        + " are wanted.")
 class FieldOpClassifierTest {
 
   // ---------------- isLikelyClassName ----------------

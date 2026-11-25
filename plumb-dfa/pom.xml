@@ -729,6 +729,8 @@
                         <include>org/plumb/dfa/integration/IrRoundTripAnalysisTest.java</include>
                         <include>org/plumb/dfa/integration/R10RealCodebaseBaseline.java</include>
                         <include>org/plumb/dfa/fact/FactBagTest.java</include>
+                        <include>org/plumb/dfa/taint/FieldOpClassifierTest.java</include>
+                        <include>org/plumb/dfa/taint/R593GuardBaseTest.java</include>
                         <!-- The source-reading boundary: registering source paths
                              is metadata only, and the resolver root is capped.
                              Without this the consumer path silently walks a whole

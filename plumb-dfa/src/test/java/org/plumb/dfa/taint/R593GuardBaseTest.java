@@ -33,7 +33,6 @@ package org.plumb.dfa.taint;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.plumb.tac.ir.BinaryOperator;
 import org.plumb.tac.ir.TacInstruction;
@@ -41,12 +40,6 @@ import org.plumb.tac.ir.TacOperand;
 import org.plumb.tac.ir.TacType;
 
 /** Guard propagation through arith and MOVE. */
-@Disabled(
-    "This class MEASURES: it walks a corpus, reports the numbers, and writes them out. It has"
-        + " no assertion, so a green here says nothing about the engine -- which is why it is"
-        + " not a CI guard. The old reason (a TacProgram import drift) was false: the import is"
-        + " org.plumb.tac.ir.TacProgram and that type exists. Run it explicitly when the numbers"
-        + " are wanted.")
 class R593GuardBaseTest {
 
   private static TacOperand.TacVar v(String name) {
