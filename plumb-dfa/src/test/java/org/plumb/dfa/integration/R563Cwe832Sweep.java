@@ -26,6 +26,8 @@
  */
 package org.plumb.dfa.integration;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,7 +36,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.plumb.dfa.checkers.controlflow.UnlockNotLockedChecker;
@@ -49,12 +50,6 @@ import org.plumb.reporter.Finding;
 import org.plumb.tac.ir.TacProgram;
 import org.plumb.tac.translate.TacTranslator;
 
-@Disabled(
-    "This class MEASURES: it walks a corpus, reports the numbers, and writes them out. It has"
-        + " no assertion, so a green here says nothing about the engine -- which is why it is"
-        + " not a CI guard. The old reason (a TacProgram import drift) was false: the import is"
-        + " org.plumb.tac.ir.TacProgram and that type exists. Run it explicitly when the numbers"
-        + " are wanted.")
 class R563Cwe832Sweep {
 
   private static final Path JULIET_ROOT = Paths.get("D:/work/tmp/Juliet_Java/src/testcases");
@@ -69,10 +64,12 @@ class R563Cwe832Sweep {
   void runCwe832() throws Exception {
     long start = System.currentTimeMillis();
     Path cweDir = JULIET_ROOT.resolve("CWE832_Unlock_Not_Locked");
-    if (!Files.isDirectory(cweDir)) {
-      System.out.println("R563 CWE832 dir not found");
-      return;
-    }
+    // A missing corpus directory is this test's premise gone, not a
+    // reason to pass quietly. The class used to print and return, which
+    // made a vanished corpus indistinguishable from a clean run.
+    assertThat(Files.isDirectory(cweDir))
+        .as("the Juliet CWE-832 corpus is still where this class expects it")
+        .isTrue();
     EngineConfig base = ConfigLoader.loadFromClasspath();
     EngineConfig cfg =
         new EngineConfig(
@@ -142,5 +139,17 @@ class R563Cwe832Sweep {
     Files.createDirectories(out.getParent());
     Files.writeString(out, sb.toString(), StandardCharsets.UTF_8);
     System.out.println(sb);
+
+    // A sweep that measured nothing is not a sweep. These are the three
+    // things that have to be true for this class to be a guard: the
+    // corpus is still there, the engine ran over it, and the engine
+    // still recognises the weakness the class is named after.
+    //
+    // The counts are "more than zero" rather than the exact number on
+    // purpose: the exact number is a property of today's corpus and
+    // today's engine, while the guard is about the engine still knowing
+    // CWE-832.
+    assertThat(files.size()).as("files scanned in the CWE-832 corpus").isGreaterThan(0);
+    assertThat(cwe832Hits).as("CWE-832 findings in that corpus").isGreaterThan(0);
   }
 }

@@ -731,6 +731,9 @@
                         <include>org/plumb/dfa/fact/FactBagTest.java</include>
                         <include>org/plumb/dfa/taint/FieldOpClassifierTest.java</include>
                         <include>org/plumb/dfa/taint/R593GuardBaseTest.java</include>
+                        <include>org/plumb/dfa/integration/R562Cwe833Sweep.java</include>
+                        <include>org/plumb/dfa/integration/R563Cwe832Sweep.java</include>
+                        <include>org/plumb/dfa/integration/R548Cwe325Sweep.java</include>
                         <!-- The source-reading boundary: registering source paths
                              is metadata only, and the resolver root is capped.
                              Without this the consumer path silently walks a whole
