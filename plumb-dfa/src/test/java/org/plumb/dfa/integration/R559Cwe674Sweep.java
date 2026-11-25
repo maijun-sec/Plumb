@@ -51,11 +51,12 @@ import org.plumb.tac.ir.TacProgram;
 import org.plumb.tac.translate.TacTranslator;
 
 @Disabled(
-    "This class MEASURES: it walks a corpus, reports the numbers, and writes them out. It has"
-        + " no assertion, so a green here says nothing about the engine -- which is why it is"
-        + " not a CI guard. The old reason (a TacProgram import drift) was false: the import is"
-        + " org.plumb.tac.ir.TacProgram and that type exists. Run it explicitly when the numbers"
-        + " are wanted.")
+    "The capability this class measured is not in the engine any more: RecursionChecker was moved"
+        + " to the plumb-style AST side in the R-812 audit, so the call that produced the numbers"
+        + " is commented out and the class measures nothing. It has no assertion either, and adding"
+        + " one could never make it a guard -- there is no engine behaviour here to assert about."
+        + " The old reason (a TacProgram import drift) was false: the import is"
+        + " org.plumb.tac.ir.TacProgram and that type exists.")
 class R559Cwe674Sweep {
 
   private static final Path JULIET_ROOT = Paths.get("D:/work/tmp/Juliet_Java/src/testcases");

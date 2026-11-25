@@ -59,35 +59,50 @@ package org.plumb.dfa.integration;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
-@Disabled("R31 design phase — awaiting 5-day sprint implementation")
+@Disabled(
+    "This class is an empty STUB: its five test methods have no bodies and assert nothing, "
+        + "so a green here says nothing about the engine. It was a placeholder for the "
+        + "cross-function taint fold, which has since landed "
+        + "(TaintedCheckerBase.propagateTaintFromCalleeSummary), and the design document "
+        + "it pointed at (docs/R5-PLUS-CROSS-FN-DESIGN-2026-08-16.md) is no longer in the "
+        + "repository -- so the reason it carried, \"awaiting the sprint\", was false on both "
+        + "counts. The behaviours it names are exercised by the cross-function tests under "
+        + "org.plumb.dfa.taint (R1109AliasTaintAcrossCallTest, ArgumentPassthroughTest, "
+        + "R1094InterprocBoundaryTest). Write real assertions here, or delete the class.")
 class R31CrossFnSummaryFoldTest {
 
   @Test
   void stringPassthroughSurvivesFold() {
-    // TODO: enable when the cross-fn phase 1 lands.
-    // See docs/R5-PLUS-CROSS-FN-DESIGN-2026-08-16.md
-    // for the expected behavior.
+    // The cross-fn phase 1 landed: the string passthrough survives the
+    // summary fold. The assertion for it lives in
+    // org.plumb.dfa.taint.ArgumentPassthroughTest.
   }
 
   @Test
   void crossMethodChainAtoBtoCtoSink() {
-    // TODO: enable when the cross-fn phase 2 lands.
+    // The cross-fn phase 2 landed: the chain a -> b -> c -> sink carries
+    // the taint through all three hops. The assertion for it lives in
+    // org.plumb.dfa.taint.R1109AliasTaintAcrossCallTest.
   }
 
   @Test
   void fieldPropagationViaThis() {
-    // TODO: enable when the cross-fn phase 3 lands.
-    // Mirrors the FN_DEEP test case.
+    // The cross-fn phase 3 landed: this.data = tainted in the helper is
+    // read back by the caller. Mirrors the FN_DEEP test case; the
+    // assertion for it lives in org.plumb.dfa.taint.R1094InterprocBoundaryTest.
   }
 
   @Test
   void pathSensitiveBranchTaint() {
-    // TODO: enable when the cross-fn phase 2 lands.
+    // The path-sensitive branch landed with the same phase. Mirrors the
+    // FN_CROSS test case; the assertion for it lives in
+    // org.plumb.dfa.taint.R1109AliasTaintAcrossCallTest.
   }
 
   @Test
   void fnCrossR567Case() {
-    // TODO: enable when the cross-fn phase 1 lands.
-    // Mirrors the FN_CROSS test case.
+    // The cross-fn phase 1 landed, which is what the FN_CROSS test case
+    // covers; the assertion for it lives in
+    // org.plumb.dfa.taint.R1109AliasTaintAcrossCallTest.
   }
 }

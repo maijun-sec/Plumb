@@ -39,11 +39,12 @@ import org.plumb.tac.translate.TacTranslator;
  * which sink patterns are missing from sink-families.yaml.
  */
 @Disabled(
-    "This class MEASURES: it walks a corpus, reports the numbers, and writes them out. It has"
-        + " no assertion, so a green here says nothing about the engine -- which is why it is"
-        + " not a CI guard. The old reason (a TacProgram import drift) was false: the import is"
-        + " org.plumb.tac.ir.TacProgram and that type exists. Run it explicitly when the numbers"
-        + " are wanted.")
+    "This class DUMPS: it prints the CALL signatures TAC emits for a corpus file so the "
+        + "sink catalogue can be checked by hand. It never tested a finding, so a green "
+        + "here says nothing about the engine -- which is why it is not a CI guard. "
+        + "The old reason (a TacProgram import drift) was false: the import is "
+        + "org.plumb.tac.ir.TacProgram and that type exists. Run it explicitly when the "
+        + "signatures are wanted.")
 class R505CweSigDump {
 
   @Test
