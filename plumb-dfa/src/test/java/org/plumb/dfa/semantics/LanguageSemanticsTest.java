@@ -416,6 +416,62 @@ class LanguageSemanticsTest {
     assertThat(custom.behaviourOf("com.example.Other/1")).isEqualTo(TaintBehaviour.UNKNOWN);
   }
 
+  /**
+   * PHP's table names the GLOBAL FUNCTION, and a method must not inherit one.
+   *
+   * <p><b>Why this needs its own test.</b> A PHP method is written {@code owner::member}, and the
+   * side car emits it that way -- {@code \PDO::trim/1} is a method called trim. The taint engine
+   * reads the method's name out of such a key, because it asks "is this a method named trim?". The
+   * table asks a different question: "is this the GLOBAL function trim?", and its entries are the
+   * operations PHP's standard library exposes as global functions.
+   *
+   * <p><b>Why the difference matters in BOTH directions.</b> A method that happens to be called
+   * {@code intval} must not be read as the global function {@code intval}, or the taint would be
+   * dropped at the call -- a false negative on a program that does nothing of the sort. And a
+   * method that happens to be called {@code trim} must not be read as the global function {@code
+   * trim} either, or the table would claim a behaviour it knows nothing about.
+   *
+   * <p><b>Why the conservative default still holds.</b> An unmodelled call preserves the taint, so
+   * a method the table has no entry for does not lose the taint -- it simply has no claim.
+   */
+  @Test
+  @DisplayName("PHP's table names the global function, not a method that shares its name")
+  void phpTableNamesTheGlobalFunctionNotAMethodThatSharesItsName() {
+    LanguageSemantics php = LanguageSemanticsRegistry.phpSemantics();
+
+    // The global functions. PHP writes a global function with a leading backslash.
+    assertThat(php.behaviourOf("\\trim/1")).isEqualTo(TaintBehaviour.PRESERVES);
+    assertThat(php.behaviourOf("\\intval/1")).isEqualTo(TaintBehaviour.DISSOCIATES);
+
+    // The METHOD that happens to carry the same name. Neither claim is the table's to make.
+    assertThat(php.behaviourOf("\\PDO::trim/1"))
+        .as("a method must not inherit the global function's PRESERVES claim")
+        .isEqualTo(TaintBehaviour.UNKNOWN);
+    assertThat(php.behaviourOf("\\PDO::intval/1"))
+        .as("a method must not inherit the global function's DISSOCIATES claim either")
+        .isEqualTo(TaintBehaviour.UNKNOWN);
+  }
+
+  /**
+   * The table's reader ends the name where the GLOBAL function's name ends.
+   *
+   * <p>This is the other half of the change, and it is a claim about the reader itself: the table
+   * reads the WHOLE qualified name of a PHP key, so a method's name never matches a global
+   * function's entry. The taint engine's reader does the opposite -- it ends the name after the
+   * double colon -- because it asks about METHODS. The two readers deliberately disagree, and this
+   * is the pin on the disagreement.
+   */
+  @Test
+  @DisplayName("the table's reader ends a PHP name at the global function's name")
+  void theTablesReaderEndsAPhpNameAtTheGlobalFunctionsName() {
+    assertThat(LanguageSemantics.methodNameOf("\\trim/1")).isEqualTo("trim");
+    assertThat(LanguageSemantics.methodNameOf("\\App\\Support\\sanitize/1")).isEqualTo("sanitize");
+    assertThat(LanguageSemantics.methodNameOf("\\PDO::trim/1"))
+        .as("a method's key is read whole, so the name is not the method's name")
+        .isEqualTo("PDO::trim");
+    assertThat(LanguageSemantics.methodNameOf("\\PDO::query/1")).isEqualTo("PDO::query");
+  }
+
   /** A malformed table must be rejected rather than silently half-built. */
   @Test
   @DisplayName("a malformed table is rejected")

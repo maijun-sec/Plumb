@@ -3100,16 +3100,26 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    *   <li>{@code iterator} for Java, C# and Go;
    *   <li>{@code __iter__} for Python, whose iteration protocol is those two methods by name;
    *   <li>{@code GetEnumerator} for C#, whose enumerator is made by that method;
+   *   <li>{@code getIterator} for PHP, whose {@code IteratorAggregate} is made by that method;
    *   <li>the computed property name {@code Symbol.iterator} for TypeScript and ArkTS, which spell
    *       the protocol that way.
    * </ul>
+   *
+   * <p><b>Why the PHP spelling is here and not only in the front end.</b> IR-P requires a
+   * protocol's callee name to be a real method name, so the side car emits the name PHP itself
+   * uses: {@code \IteratorAggregate::getIterator/0}. The engine reads the method name out of the
+   * key -- see {@link #methodNameOf} -- so the name that reaches this list is {@code getIterator},
+   * and a list that knew only {@code iterator} would never match it.
    *
    * <p>The owner is not checked: the enhanced-for loop is the shape that matters, and the IR may or
    * may not have resolved the collection's declaring type.
    */
   private static boolean isIteratorFactory(String calleeSig) {
     String name = methodNameOf(calleeSig);
-    if (name.equals("iterator") || name.equals("__iter__") || name.equals("GetEnumerator")) {
+    if (name.equals("iterator")
+        || name.equals("__iter__")
+        || name.equals("GetEnumerator")
+        || name.equals("getIterator")) {
       return true;
     }
     // A COMPUTED property name. The side car writes the protocol the way the language spells
@@ -3148,6 +3158,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    *
    * <p>The same two spellings as the factory: {@code next} and Python's {@code __next__}.
    *
+   * <p><b>Why PHP needs no third spelling.</b> PHP's {@code Iterator} advances through a method
+   * called {@code next}, and the engine reads that name out of the key {@code \Iterator::next/0} --
+   * see {@link #methodNameOf} -- so the name that reaches this list is the {@code next} that was
+   * already here.
+   *
    * <p><b>Why C#'s {@code MoveNext} is not one of them.</b> C#'s enumerator does not return the
    * element from the call that advances it: {@code MoveNext} says whether there IS an element, and
    * {@code Current} hands it out. Tainting the boolean would taint nothing that the program uses.
@@ -3161,13 +3176,28 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * Is this call the one that takes the element out of an iterator?
    *
    * <p>C#'s enumerator keeps the element behind a property, so the call that hands it out is the
-   * property's getter, {@code get_Current}. The name is checked together with the RECEIVER: the
-   * call only carries the iterator's taint when the receiver IS a known iterator, so a method that
-   * happens to be called {@code Current} on something else is not read as one.
+   * property's getter, {@code get_Current}. PHP's {@code Iterator} hands the element out of a plain
+   * method, {@code current}, and PHP writes it in lower case.
+   *
+   * <p><b>Why the comparison ignores case.</b> PHP's method names are case-insensitive BY THE
+   * LANGUAGE'S OWN RULE: {@code $it->current()} and {@code $it->Current()} are the SAME method. A
+   * case-sensitive comparison therefore misses half of PHP's own spelling of the protocol, and that
+   * miss is a false NEGATIVE: the element comes out of the iterator clean, and a value that arrived
+   * from outside the program never reaches the sink. It is the reason the general method-name
+   * helpers already ignore case (see {@link #isMethodNamed}) -- a difference in the spelling of a
+   * name is a naming CONVENTION, not a different operation.
+   *
+   * <p><b>Why the looser comparison is safe for the languages that were already here.</b> The name
+   * is checked together with the RECEIVER: the call only carries the iterator's taint when the
+   * receiver IS a known iterator, so a method that happens to be called {@code Current} on
+   * something else is not read as one. The only names the looser comparison adds are other
+   * spellings of the operation that was already recognised -- {@code current}, {@code CURRENT},
+   * {@code get_current} -- and every one of them is still gated on the receiver being a known
+   * iterator.
    */
   private static boolean isIteratorCurrent(String calleeSig) {
     String name = methodNameOf(calleeSig);
-    return name.equals("get_Current") || name.equals("Current");
+    return name.equalsIgnoreCase("get_Current") || name.equalsIgnoreCase("Current");
   }
 
   /**
@@ -3276,17 +3306,50 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * global function is written with a leading backslash: {@code system} arrives as {@code
    * \system/1} and a namespaced one as {@code App\Support\sanitize/1}. Neither has a dot, so a
    * dot-only split would name the whole thing -- {@code \trim} -- and the method-name lists would
-   * never match a PHP call. The semantics table's reader splits the same way, because the two have
-   * to agree.
+   * never match a PHP call.
+   *
+   * <p><b>Why a double colon counts as a separator too.</b> A PHP METHOD is written {@code
+   * owner::member}, and the side car emits it that way: a static call arrives as {@code
+   * \PDO::query/1} and an instance one as {@code \ArrayObject::getIterator/0}. Without the double
+   * colon the WHOLE qualified name would be read as the method's name, so no method-name list would
+   * ever match a PHP method call.
+   *
+   * <p><b>Why the RIGHTMOST separator is the one that counts.</b> A key can carry several: {@code
+   * App\Support\sanitize/1} is a namespaced global function, and an owner, a scope and a member can
+   * all appear at once. The method's name is what stands after the last of them.
+   *
+   * <p><b>Why a double colon only separates when a name follows it.</b> Scala spells its collection
+   * operators {@code owner.::}, and there the double colon IS the method's name -- with nothing
+   * behind it. A key that ends in a double colon therefore has no member behind the separator, and
+   * the dot before it is the one that separates.
+   *
+   * <p><b>Why this reader and the semantics table's reader DELIBERATELY disagree.</b> They ask
+   * DIFFERENT questions, and on PHP the answers have to differ. This one asks "is this a method
+   * named {@code trim}?", and the answer is about the last segment of the key whatever qualified
+   * it. The semantics table asks "is this the GLOBAL FUNCTION {@code trim}?", and the answer is
+   * about the WHOLE qualified name: {@code \PDO::trim/1} is a method that happens to be called
+   * trim, and a method must not inherit the semantics of the global function with the same name. So
+   * the table's reader does not split on the double colon -- {@code \PDO::trim/1} stays UNKNOWN
+   * there -- while this reader calls it {@code trim}.
    */
-  private static String methodNameOf(String calleeSig) {
+  static String methodNameOf(String calleeSig) {
     if (calleeSig == null || calleeSig.isEmpty()) return "";
     int slash = calleeSig.lastIndexOf('/');
     String qualified = slash < 0 ? calleeSig : calleeSig.substring(0, slash);
     int dot = qualified.lastIndexOf('.');
     int backslash = qualified.lastIndexOf('\\');
-    int cut = Math.max(dot, backslash);
-    return cut < 0 ? qualified : qualified.substring(cut + 1);
+    int scope = qualified.lastIndexOf("::");
+    // A double colon separates an owner from a member only when a name FOLLOWS it:
+    // Scala's collection operators are spelled `owner.::`, and there the double
+    // colon IS the method's name.
+    if (scope >= 0 && scope + 2 >= qualified.length()) scope = -1;
+    // The name starts AFTER the rightmost separator, and the separators are
+    // one character wide except `::`, which is two.
+    int start = -1;
+    if (dot >= 0) start = dot + 1;
+    if (backslash >= 0) start = Math.max(start, backslash + 1);
+    if (scope >= 0) start = Math.max(start, scope + 2);
+    return start < 0 ? qualified : qualified.substring(start);
   }
 
   /**

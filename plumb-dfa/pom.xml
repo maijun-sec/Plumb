@@ -920,6 +920,15 @@
                         <include>org/plumb/dfa/taint/PythonIteratorTaintTest.java</include>
                         <include>org/plumb/dfa/taint/TypeScriptIteratorTaintTest.java</include>
                         <include>org/plumb/dfa/taint/CsharpEnumeratorTaintTest.java</include>
+                        <!-- A PHP method is written owner::member, and the
+                             engine has to read the method's name out of
+                             such a key. The taint engine and the semantics
+                             table ask DIFFERENT questions about that name,
+                             so the two readers deliberately split a PHP key
+                             differently: this class pins the engine's side,
+                             and the semantics table's side is pinned in
+                             LanguageSemanticsTest. -->
+                        <include>org/plumb/dfa/taint/PhpMethodNameTest.java</include>
                         <!-- A collection is filled by a CALL, not by an array
                              store, so the taint of what was put into it has to
                              reach the loop that reads it back out. The rule is

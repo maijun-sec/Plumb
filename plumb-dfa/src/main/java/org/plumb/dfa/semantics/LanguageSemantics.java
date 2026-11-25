@@ -137,8 +137,10 @@ public final class LanguageSemantics {
      * operation IS rather than which class spells it.
      *
      * <p><b>Why the comparison ignores case.</b> The engine classifies a call by its method name in
-     * the same way (see the taint engine's own method-name helpers), and the two have to agree: a
-     * call the engine calls a trim must find a PRESERVES entry, or the taint stops there.
+     * the same way (see the taint engine's own method-name helpers), and the two agree on the CASE:
+     * a call the engine calls a trim has to find a PRESERVES entry, or the taint stops there. They
+     * do NOT agree on where the name ENDS -- see {@link #methodNameOf} for why the two readers
+     * deliberately split a PHP key differently.
      *
      * @param methodName the method name, without the owner or the arity
      * @param behaviour the behaviour of a matching callee
@@ -218,8 +220,22 @@ public final class LanguageSemantics {
    * and a global function is written with a leading backslash: {@code system} arrives as {@code
    * \system/1} and a namespaced one as {@code App\Support\sanitize/1}. Neither has a dot, so a
    * dot-only split would name the whole thing -- or nothing at all -- and a method-name entry would
-   * never match. The engine's own method-name reader splits the same way, because the two have to
-   * agree: a call the engine calls a trim has to find a PRESERVES entry.
+   * never match.
+   *
+   * <p><b>Why the DOUBLE COLON is NOT a separator here, although it is one in the taint engine.</b>
+   * The two readers ask DIFFERENT questions, and on PHP their answers have to differ. This one asks
+   * "is this the GLOBAL FUNCTION {@code trim}?" -- the table's entries are the operations a
+   * language's standard library exposes as global functions ({@code trim}, {@code strtolower},
+   * {@code substr}, {@code sprintf}), and a global function's name is the WHOLE qualified name. The
+   * taint engine asks "is this a METHOD named {@code trim}?", and there the answer is about the
+   * last segment of the key whatever qualified it.
+   *
+   * <p>So a PHP METHOD called {@code trim} -- {@code \PDO::trim/1} -- must NOT inherit the
+   * semantics of the global function {@code trim}: it is a different operation that happens to
+   * share a name, and a table written for the global function says nothing about it. This reader
+   * therefore leaves the double colon alone, and {@code \PDO::trim/1} stays {@link
+   * TaintBehaviour#UNKNOWN} here while the taint engine calls it {@code trim}. The conservative
+   * default still applies to it: an unmodelled call preserves the taint.
    *
    * @param calleeSig the callee key
    * @return the method name; empty when the key names none
