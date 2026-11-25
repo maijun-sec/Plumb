@@ -149,6 +149,23 @@ public final class ScanRunner {
       java.util.Collections.synchronizedList(new ArrayList<>());
 
   /**
+   * The files whose language Plumb has no frontend for, so they were not analysed.
+   *
+   * <p>C/C++ today. They are not source files -- Plumb cannot read them -- so the discovery does
+   * not collect them for the analysis. They are collected HERE instead, because a file that is
+   * dropped without a word is indistinguishable from a file that was analysed and found clean.
+   *
+   * <p>They are kept apart from {@link #unparsedFiles} because the two are different facts: a file
+   * that could not be parsed is broken, while a C file is perfectly good code that Plumb cannot
+   * read. The report says which, because the remedy is different: one is a source fix, the other is
+   * a missing frontend.
+   *
+   * <p>It is written on the caller's thread, during the discovery, and read on the same thread when
+   * the completeness record is built.
+   */
+  private final List<Path> unsupportedLanguageFiles = new ArrayList<>();
+
+  /**
    * The files that were not analysed because the machine ran out of memory.
    *
    * <p>These are kept apart from {@link #unparsedFiles} because the two are different facts. A file
@@ -375,7 +392,15 @@ public final class ScanRunner {
         }
         for (Path file : expandInputs(input)) {
           if (!matches(file)) continue;
-          if (!FrontendRegistry.isSourceFile(file)) continue;
+          if (!FrontendRegistry.isSourceFile(file)) {
+            // A file Plumb has no frontend for. It is not a source file, so
+            // it is not analysed -- but it must not disappear without a
+            // word: the scan records it and says so.
+            if (FrontendRegistry.isCxxFile(file)) {
+              unsupportedLanguageFiles.add(file);
+            }
+            continue;
+          }
           // The language filter is a LOAD-TIME filter: a file whose language was not selected
           // is not even collected, so the scan does not open it, translate it, or build the
           // frontend that would have read it.
@@ -383,6 +408,10 @@ public final class ScanRunner {
           sourceFiles.add(file);
         }
       }
+      // The C/C++ files are not source files, so they were never analysed.
+      // Say so -- once, before anything else: a run that did not read the
+      // code must not look like a run that found nothing wrong with it.
+      reportUnsupportedLanguage();
       if (sourceFiles.isEmpty() && bytecodeInputs.isEmpty()) {
         // No inputs resolved. Either the user passed
         // -i pointing at an empty dir, or they
@@ -393,6 +422,13 @@ public final class ScanRunner {
         // nothing and reported nothing is indistinguishable from a clean
         // project, and that is the one outcome a scanner must never produce
         // silently. The exit code is non-zero so a CI pipeline sees it.
+        //
+        // The verdict stays "no source files found" even when the input held
+        // C/C++ files: that verdict is true (Plumb found no source file it
+        // can read) and it is the pre-existing behaviour a CI pipeline may
+        // already match on. The C/C++ sentence says WHY the input produced
+        // nothing, so both facts -- Plumb does not read C/C++, and so nothing
+        // was scanned -- reach the user in the same breath.
         System.err.println(
             "plumb: no source files found in any input "
                 + "(recognised: "
@@ -402,6 +438,7 @@ public final class ScanRunner {
                 + "; this run analyses "
                 + languageFilter().describe()
                 + "). "
+                + unsupportedLanguageNotice()
                 + "Pass -i <path> on the command line, or add an "
                 + "inputs: block to your YAML config.");
         emit(List.of());
@@ -2147,6 +2184,41 @@ public final class ScanRunner {
       }
       LOG.warn("{} [{}] {}", problem.functionName(), problem.kind(), problem.message());
     }
+  }
+
+  /**
+   * Report the files whose language Plumb has no frontend for.
+   *
+   * <p><b>Why this is a scan-level report and not a per-file one.</b> The fact is a fact about the
+   * LANGUAGE, not about a file: Plumb cannot read C/C++, and that is true of the thousandth .c file
+   * exactly as it is of the first. So one problem is declared, with the same kind and the same
+   * message for every file -- and {@link #reportDegradations}, which deduplicates by kind and
+   * message, prints it once. A project with a thousand C files says it once rather than a thousand
+   * times.
+   *
+   * <p>The problem is the same {@code FRONTEND_NOT_IMPLEMENTED} the registry produces for a
+   * language that has no frontend yet, so it travels the path every other frontend gap travels.
+   */
+  private void reportUnsupportedLanguage() {
+    if (unsupportedLanguageFiles.isEmpty()) {
+      return;
+    }
+    reportDegradations(List.of(FrontendRegistry.cxxProblem(unsupportedLanguageFiles.get(0))));
+  }
+
+  /**
+   * The sentence that tells the user the C/C++ files were found and not analysed.
+   *
+   * <p>Empty when the scan found no C/C++ file.
+   *
+   * @return the sentence, ending with a space, or an empty string
+   */
+  private String unsupportedLanguageNotice() {
+    if (unsupportedLanguageFiles.isEmpty()) {
+      return "";
+    }
+    return unsupportedLanguageFiles.size()
+        + " C/C++ file(s) were found, but Plumb has no C/C++ frontend, so they were not analysed. ";
   }
 
   /**
@@ -4344,10 +4416,19 @@ public final class ScanRunner {
   private List<Path> expandInputs(Path input) throws IOException {
     if (Files.isDirectory(input)) {
       try (Stream<Path> walk = Files.walk(input)) {
-        return walk.filter(FrontendRegistry::isSourceFile)
+        return walk
+            // The source files of the languages this run analyses, PLUS the
+            // files of the language it cannot read at all (C/C++). The second
+            // group is collected so the run can SAY that it did not analyse
+            // them; dropping them here would make them invisible.
+            //
             // The language filter, applied at the discovery level: a file whose language was
             // not selected is never opened, never translated, and never reaches a frontend.
-            .filter(p -> languageFilter().includes(FrontendRegistry.languageOf(p)))
+            .filter(
+                p ->
+                    (FrontendRegistry.isSourceFile(p)
+                            && languageFilter().includes(FrontendRegistry.languageOf(p)))
+                        || FrontendRegistry.isCxxFile(p))
             // Skip files under
             // `src/test/` (Java's test
             // directory convention). The
@@ -4765,6 +4846,21 @@ public final class ScanRunner {
                 + " file(s) could not be parsed and were not analysed: "
                 + summarise(unparsed));
       }
+    }
+    if (!unsupportedLanguageFiles.isEmpty()) {
+      // The files Plumb cannot read at all. They are not broken, and they
+      // are not a parse failure: the language has no frontend. The note
+      // says so, and names them, so "no findings" cannot be mistaken for
+      // "these files were looked at and are clean".
+      List<String> unsupported = new ArrayList<>();
+      for (Path file : unsupportedLanguageFiles) {
+        unsupported.add(file.toString());
+      }
+      notes.add(
+          unsupported.size()
+              + " C/C++ file(s) were found and not analysed: Plumb has no C/C++ frontend ("
+              + summarise(unsupported)
+              + ")");
     }
     if (!outOfMemoryFiles.isEmpty()) {
       List<String> starved = snapshotOf(outOfMemoryFiles);

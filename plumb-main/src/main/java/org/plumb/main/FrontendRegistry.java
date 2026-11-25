@@ -279,6 +279,64 @@ final class FrontendRegistry implements AutoCloseable {
   }
 
   /**
+   * The C and C++ extensions. Plumb has no frontend for them.
+   *
+   * <p><b>Why this list exists at all.</b> A C or C++ file is not a source file Plumb can read, so
+   * the discovery does not collect it for the analysis -- and a file that is never collected
+   * produces no findings and no problems, which is indistinguishable from a file that was analysed
+   * and found clean. So the registry knows the extensions, and the scan says so: one line for the
+   * scan, not one line per file.
+   *
+   * <p><b>Why it is NOT part of {@link #knownExtensions()}.</b> That set is rendered to the user as
+   * the list of languages Plumb reads ("recognised: .java, .kt, ..."), and C/C++ is not one of
+   * them. Listing it there would claim a capability Plumb does not have.
+   */
+  private static final Set<String> CXX_EXTENSIONS = Set.of("c", "cpp", "cc", "h", "hpp");
+
+  /**
+   * Whether a file is C or C++ -- a language Plumb has no frontend for.
+   *
+   * <p>This is the mirror image of {@link #isSourceFile}: the file is not read, but it is not
+   * invisible either.
+   *
+   * @param file the file
+   * @return true when the extension names C or C++
+   */
+  static boolean isCxxFile(Path file) {
+    if (file == null) {
+      return false;
+    }
+    String name = file.getFileName().toString();
+    int dot = name.lastIndexOf('.');
+    if (dot < 0 || dot == name.length() - 1) {
+      return false;
+    }
+    return CXX_EXTENSIONS.contains(name.substring(dot + 1).toLowerCase(Locale.ROOT));
+  }
+
+  /**
+   * The problem a C/C++ file produces: the language has no frontend, so the file was not analysed.
+   *
+   * <p>The kind is the same {@code FRONTEND_NOT_IMPLEMENTED} the other languages use, because it IS
+   * the same fact: the language is one the run analyses, and it has no frontend yet.
+   *
+   * <p>The message is the same for every C/C++ file, and the reporter deduplicates by kind and
+   * message -- so a project with a thousand C files says it once rather than a thousand times.
+   *
+   * @param file the file the problem is about
+   * @return the problem
+   */
+  static TacProgram.FunctionProblem cxxProblem(Path file) {
+    return new TacProgram.FunctionProblem(
+        file.toString(),
+        "FRONTEND_NOT_IMPLEMENTED",
+        "this file is C/C++, and Plumb has no C/C++ frontend; the file was not analysed",
+        null,
+        -1,
+        -1);
+  }
+
+  /**
    * The frontend for a language, built on first use.
    *
    * @param language the language
@@ -362,6 +420,14 @@ final class FrontendRegistry implements AutoCloseable {
    * @return the parse outcome
    */
   ParsedSourceFile parseFile(Path file) {
+    if (isCxxFile(file)) {
+      // C/C++ has no frontend at all -- not a missing one, not an
+      // unselected one. The file is not a source file Plumb can read, so
+      // the discovery does not hand it to the analysis; the scan says so
+      // instead of dropping it without a word.
+      return new ParsedSourceFile(
+          List.of(), List.of(cxxProblem(file)), SourceLanguage.UNKNOWN, null);
+    }
     SourceLanguage language = languageOf(file);
     TacFrontend frontend = frontendFor(language);
     if (frontend == null) {
