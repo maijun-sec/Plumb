@@ -359,7 +359,7 @@ They are 17 independent TAC pattern checkers that merely share a package name; t
 
 ## 4. Nullability: a three-valued fact domain
 
-`AnalysisContext.mayBeNull(...)` (`engine/AnalysisContext.java:676`) is a **forward to the points-to
+`AnalysisContext.mayBeNull(...)` (`engine/AnalysisContext.java:667`) is a **forward to the points-to
 solver** and stores no facts itself. The five channels are private fields of `PointsToSolver`:
 
 - `nullFields` `:147`
@@ -377,7 +377,7 @@ nulls would alias each other and pollute `mayAlias`):
 | Empty | Present | Definitely null |
 | Empty | Absent | **Unknown** (never equal to null) |
 
-⚠️ `AnalysisContext.java:676-680` — its javadoc explicitly warns: `mayBeNull == false` is **not** a proof of non-null
+⚠️ `AnalysisContext.java:667-671` — its javadoc explicitly warns: `mayBeNull == false` is **not** a proof of non-null
 (unmodelled writes leave no trace). This is the same invariant as "an empty set does not prove safety".
 
 ---

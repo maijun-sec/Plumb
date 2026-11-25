@@ -352,7 +352,7 @@ JavaScript、Python、PHP 里，下标指向的是一个**命名空间里的条�
 
 ## 4. 可空性：三值事实域
 
-`AnalysisContext.mayBeNull(...)`（`engine/AnalysisContext.java:676`）是**对指向性
+`AnalysisContext.mayBeNull(...)`（`engine/AnalysisContext.java:667`）是**对指向性
 求解器的转发**，本身不存事实。五个通道是 `PointsToSolver` 的私有字段：
 
 - `nullFields` `:147`
@@ -370,7 +370,7 @@ null 会互相 alias，污染 `mayAlias`）：
 | 空 | 有 | 确定为 null |
 | 空 | 无 | **未知**（绝不等于 null） |
 
-⚠️ `AnalysisContext.java:676-680` 的 javadoc 明确警告：`mayBeNull == false` **不是**非 null 的证明
+⚠️ `AnalysisContext.java:667-671` 的 javadoc 明确警告：`mayBeNull == false` **不是**非 null 的证明
 （未被建模的写入不留痕迹）。这与「空集合不能证明安全」是同一条不变量。
 
 ---

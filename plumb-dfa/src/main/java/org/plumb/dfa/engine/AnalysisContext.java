@@ -236,15 +236,6 @@ public final class AnalysisContext {
   }
 
   /**
-   * Current call-site context (set by DfaEngine before each callee initFunction).
-   *
-   * <p>Per THREAD, like the fact bag: the parallel worklist analyses several functions at once, and
-   * the call site a checker sees belongs to the function ITS worker is analysing.
-   */
-  private final ThreadLocal<org.plumb.dfa.context.CallSiteContext> currentCallSiteContext =
-      ThreadLocal.withInitial(() -> org.plumb.dfa.context.CallSiteContext.EMPTY);
-
-  /**
    * The function the engine is currently analysing. Set by DfaEngine before each {@code
    * initFunction} call. Used by FindingReporter to fill in {@code filePath} on findings whose
    * checker left it empty (newer DFA checkers don't carry the path themselves -- the IR doesn't
@@ -688,22 +679,6 @@ public final class AnalysisContext {
    */
   public SideEffectConsumer sideEffectConsumer() {
     return sideEffectConsumer.get();
-  }
-
-  /**
-   * Current call-site context. The DfaEngine sets this just before each callee's {@code
-   * initFunction} is called; checkers can read it to discover what the caller already knew.
-   */
-  public org.plumb.dfa.context.CallSiteContext currentCallSiteContext() {
-    return currentCallSiteContext.get();
-  }
-
-  /**
-   * Set the current call-site context. Engine- internal; checkers should not call this directly.
-   */
-  public void setCurrentCallSiteContext(org.plumb.dfa.context.CallSiteContext ctx) {
-    this.currentCallSiteContext.set(
-        ctx == null ? org.plumb.dfa.context.CallSiteContext.EMPTY : ctx);
   }
 
   /**
