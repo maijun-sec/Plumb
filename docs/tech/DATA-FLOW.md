@@ -145,8 +145,8 @@ their own independent mechanisms (see below).
 `checkers/taint/` override `checkInstruction` in bulk (there are 75 `extends TaintedCheckerBase` in the whole
 repository, the other two being `BoundaryConstraintChecker` and the base class itself).
 
-- State: `taintedVars: Map<TacVar, String>` (`:270`) and `taintPaths` (`:303`)
-- Propagation: `propagateMOVE` (`:2097`) and friends, dispatched by instruction kind
+- State: `taintedVars: Map<TacVar, String>` (`:271`) and `taintPaths` (`:440`)
+- Propagation: `propagateMOVE` (`:2236`) and friends, dispatched by instruction kind
 - Sink decision: looks up `SinkFamilyRegistry` by `sinkFamilyKey` (`config/SinkFamilyRegistry.java:22`, in the
   `org.plumb.dfa.config` package), **not** an IFDS framework
 - Cross-function: `FunctionSummary` + `Operation.TaintPropagate`
@@ -385,8 +385,8 @@ nulls would alias each other and pollute `mayAlias`):
 ## 5. Z3: false-positive filtering only
 
 Z3 has exactly **three** call sites in the whole engine, all of them in `TaintedCheckerBase.java`:
-`TaintedCheckerBase.java:5406` on the sink reporting path, and `TaintedCheckerBase.java:5726` and
-`TaintedCheckerBase.java:5734` at a call site.
+`TaintedCheckerBase.java:5561` on the sink reporting path, and `TaintedCheckerBase.java:5881` and
+`TaintedCheckerBase.java:5889` at a call site.
 
 The reachability check happens in **one** place, `TaintedCheckerBase.isPathSuppressed`, on the sink
 reporting path. Both sink paths go through it: the CALL path and the constructor path
@@ -470,7 +470,7 @@ Two further restrictions keep the check from suppressing a real finding:
   signature. The call completes normally when ANY of the variants does, so the disjunction is the
   sound reading and a vacuous one is refused.
 
-- `pathConditionForSink` (`:5364`) has a base-class implementation: the conflicting pair as a
+- `pathConditionForSink` (`:5521`) has a base-class implementation: the conflicting pair as a
   predicate, so the reader of a finding can see why it was suppressed. A subclass may override it
   with a predicate the solver can evaluate.
 - The semantics are unambiguous: the check is **only used to suppress false positives, never to
@@ -524,6 +524,50 @@ default**) and the cached variant.
 
 Note also: the `1cfa` here is a **call graph** strategy, and it is a separate switch from the `CALL_SITE` policy of the
 points-to analysis in §3.3.
+
+### 6.1 The context depth is a budget of call edges
+
+`context_depth` (`tuning.yaml`, default `2`) says **how many call edges the engine may cross between the
+analysed function and the origin of a taint**. It used to be an on/off switch: every value above zero
+behaved the same way, so a user who measured depth `1` and depth `2` measured the same analysis twice and
+concluded the setting did nothing.
+
+| Depth | What may reach the analysed function's sink |
+| --- | --- |
+| `0` | nothing from another function — every finding is inside one function |
+| `1` | a taint whose origin is in a direct callee |
+| `2` | a taint whose origin is in a callee of a callee |
+| `3` | a taint whose origin is three call edges away |
+
+The mechanism, in five parts:
+
+- **The summary carries the depth.** Every summary records the **fold depth** of the taint it hands out
+  (`FunctionSummary.foldDepth()`): the number of call edges that taint has ALREADY crossed by the time
+  it lands in the caller's hands. A function that read the source itself hands over a taint that has
+  crossed one edge; a function that got the taint from its own callee hands over one that has crossed
+  two.
+- **The caller's own taint is charged nothing.** A taint that is a **formal's** taint — the caller's
+  own value coming back through a parameter — never left the caller's frame, so it crossed no edge and
+  the summary records `0`. A chain that passes the caller's own argument down three calls and back is
+  found at depth `1`; charging it for the calls it travelled through would turn the budget into a false
+  negative on the most common shape there is.
+- **The caller pays what the summary says.** The fold happens only while
+  `callee.foldDepth() <= context_depth` (`TaintedCheckerBase.java:6085`).
+- **The depth is tracked per taint LABEL, not per variable.** A label names one taint fact and therefore
+  one provenance; a variable that copies another variable's taint keeps the label, and with it the depth,
+  so the copies need no bookkeeping at all — and a copy that cannot be missed cannot be miscounted.
+- **A cut-off fold is a budget exhaustion, not a finding.** It is recorded on
+  `AnalysisBudget.Dimension.CONTEXT_DEPTH`, which says "the findings are a subset of what a deeper budget
+  would have found" — the same channel as a summary-cache refusal or a per-function timeout.
+
+⚠️ **The budget grades the summary fold**, which is the channel that carries the taint's provenance. The
+program-wide field view (`crossFnClassFieldTaint`, `accessPathTaintStore`) has no call-graph distance to
+grade: at depth `0` a write made by another function is refused (a foreign write may not be consumed
+inside one function), but at depth `1` and above that view is not graded further.
+
+⚠️ **The per-checker `context_depth` in `checkers.yaml` is not read by any analysis code.** The effective
+depth comes from `tuning.yaml`; `CheckerConfig.contextDepth()` has no caller. The two knobs therefore
+cannot disagree today — because only one of them exists.
 
 ---
 

@@ -146,8 +146,8 @@ checker** 自己实现 —— 污点传播在 `taint/TaintedCheckerBase.propagat
 `checkInstruction`（全仓库共 48 个 `extends TaintedCheckerBase`，
 另外两个是 `BoundaryConstraintChecker` 和基类自身）。
 
-- 状态：`taintedVars: Map<TacVar, String>`（`:270`）与 `taintPaths`（`:303`）
-- 传播：`propagateMOVE`（`:2097`）等按指令种类分派
+- 状态：`taintedVars: Map<TacVar, String>`（`:271`）与 `taintPaths`（`:440`）
+- 传播：`propagateMOVE`（`:2236`）等按指令种类分派
 - sink 判定：按 `sinkFamilyKey` 查 `SinkFamilyRegistry`（`config/SinkFamilyRegistry.java:22`，在
   `org.plumb.dfa.config` 包），**不是** IFDS 框架
 - 跨函数：`FunctionSummary` + `Operation.TaintPropagate`
@@ -378,7 +378,7 @@ null 会互相 alias，污染 `mayAlias`）：
 ## 5. Z3：只做误报过滤
 
 Z3 在整个引擎里只有**三个**调用点，都在 `TaintedCheckerBase.java` 里：
-`:5406` 在 sink 上报路径上，`:5726` 与 `:5734` 在调用点上。
+`:5561` 在 sink 上报路径上，`:5881` 与 `:5889` 在调用点上。
 
 可达性判定在**一个**地方完成，`TaintedCheckerBase.isPathSuppressed`，位于 sink 上报路径上。
 两条 sink 路径都经过它：CALL 路径和构造器路径（`checkSinkAtNew`）——
@@ -455,7 +455,7 @@ static String check(String s, int lim) {
   而一个代码库里有很多函数共用同一个签名。任意一个变体能正常返回，这次调用就能正常返回，
   所以析取才是可靠的读法；空析取会被拒绝。
 
-- `pathConditionForSink`（`:5364`）在基类里就有实现：把那对冲突的守卫作为谓词返回，
+- `pathConditionForSink`（`:5521`）在基类里就有实现：把那对冲突的守卫作为谓词返回，
   这样读 finding 的人能看出它为什么被抑制。子类可以覆写它，提供求解器能求值的谓词。
 - 语义明确：这个判定**只用于抑制误报，绝不用于发现缺陷**（`:3237`）
 - 调用链：`CachedZ3Bridge`（LRU 4096 项，`solver/CachedZ3Bridge.java:41-66`）→
@@ -506,6 +506,43 @@ Z3 由 `tools.aqua:z3-turnkey` 提供，自动下载对应平台 native lib。
 
 另注：这里的 `1cfa` 是**调用图**策略，与 §3.3 指向分析的 `CALL_SITE` policy 是两套独立
 开关。
+
+### 6.1 上下文深度是一份「调用边预算」
+
+`context_depth`（`tuning.yaml`，默认 `2`）说的是：**引擎最多能跨过多少条调用边**，从被分析的函数
+追到污点的来源。它过去是一个开关：任何大于零的值行为都一样，于是把深度设成 `1` 再设成 `2` 的用户
+量了两次同一次分析，得出「这个设置没用」的结论。
+
+| 深度 | 什么能到达被分析函数的 sink |
+| --- | --- |
+| `0` | 别的函数里的东西一律不到达 —— 每条 finding 都在一个函数内 |
+| `1` | 来源在直接被调用方里的污点 |
+| `2` | 来源在被调用方的被调用方里的污点 |
+| `3` | 来源在三跳之外的污点 |
+
+机制分五部分：
+
+- **摘要带着深度。** 每个摘要记录它交出去的污点的**折叠深度**（`FunctionSummary.foldDepth()`）：
+  该污点**落到调用方手里时已经跨过**多少条调用边。函数自己读了源 ⇒ 交出去的污点跨过一条边；
+  函数从自己的被调用方拿到污点 ⇒ 跨过两条。
+- **调用方自己的污点不收费。** 属于**形参**的污点 —— 调用方自己的值经参数绕回来 —— 从未离开调用方的
+  栈帧，跨过零条边，摘要记 `0`。把自己那个被污染的参数往下传三层再传回来的链，在深度 `1` 上必须能
+  找到；为它走过的那些调用收费，等于把预算变成最常见形状上的漏报。
+- **调用方按摘要说的付。** 只有 `callee.foldDepth() <= context_depth` 时才折叠
+  （`TaintedCheckerBase.java:6085`）。
+- **深度按污点标签记，不按变量记。** 一个标签命名一条污点事实，因而也命名一条来源；复制另一个变量
+  的污点时变量保留标签，也就保留了深度 —— 于是复制路径完全不需要记账，而且漏不掉的复制也不会被数错。
+- **被预算切断的折叠是「预算耗尽」，不是 finding。** 它记在
+  `AnalysisBudget.Dimension.CONTEXT_DEPTH` 上，含义是「这些 finding 是更深预算下会找到的那些的
+  子集」—— 与摘要缓存拒绝、函数级超时走同一条通道。
+
+⚠️ **预算分级的是摘要折叠**，也就是承载污点来源的那条通道。程序级字段视图
+（`crossFnClassFieldTaint`、`accessPathTaintStore`）没有调用图距离可分级：深度为 `0` 时别的函数
+写的字段不允许被消费（函数内不许读别人的写），但深度 ≥ `1` 之后这个视图不再细分。
+
+⚠️ **`checkers.yaml` 里每个 checker 的 `context_depth` 没有任何分析代码读它。** 生效的深度来自
+`tuning.yaml`；`CheckerConfig.contextDepth()` 没有调用者。今天这两个旋钮不会冲突 —— 因为只有一个
+真正存在。
 
 ---
 

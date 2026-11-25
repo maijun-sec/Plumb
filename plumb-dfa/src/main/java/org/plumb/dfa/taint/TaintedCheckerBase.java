@@ -31,6 +31,7 @@ import java.util.Set;
 import org.plumb.dfa.config.CheckerConfig;
 import org.plumb.dfa.config.EngineConfig;
 import org.plumb.dfa.config.SinkFamily;
+import org.plumb.dfa.engine.AnalysisBudget;
 import org.plumb.dfa.engine.AnalysisContext;
 import org.plumb.dfa.engine.DfaChecker;
 import org.plumb.dfa.fact.BuiltinFactKinds;
@@ -268,6 +269,141 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * {@link #initFunction}.
    */
   protected final Map<TacOperand.TacVar, String> taintedVars = new LinkedHashMap<>();
+
+  /**
+   * How many interprocedural hops each taint LABEL took to reach the current function.
+   *
+   * <p>The depth is tracked per LABEL rather than per variable, because a label names one taint
+   * fact and therefore one provenance: a taint that arrived through a callee's summary has a label
+   * the fold created, and that label's depth is the callee's own depth plus the call edge that was
+   * crossed. A variable that copies another variable's taint keeps the label, and with it the depth
+   * -- so the copies need no bookkeeping at all, and a copy that cannot be missed cannot be
+   * miscounted.
+   *
+   * <p>A label that is not in the map has depth 0: the taint was established inside this function
+   * (a source read here, or a parameter the caller supplied). Treating an unrecorded label as
+   * shallow is the safe direction: a depth that is too small lets the engine follow one hop too
+   * far, while a depth that is too large would drop a finding.
+   *
+   * <p>Cleared at every function boundary by {@link #initFunction}, like the taint state beside it:
+   * a depth is relative to the frame it was measured in.
+   */
+  private final Map<String, Integer> taintLabelDepth = new HashMap<>();
+
+  /**
+   * The depth of a taint label in the current function.
+   *
+   * @param label the taint label
+   * @return the number of interprocedural hops the label took to get here; 0 when the label is
+   *     unknown or was established inside this function
+   */
+  private int depthOfLabel(String label) {
+    if (label == null) {
+      return 0;
+    }
+    Integer depth = taintLabelDepth.get(label);
+    return depth == null ? 0 : depth.intValue();
+  }
+
+  /**
+   * Record the depth of a taint label in the current function.
+   *
+   * <p>The shallowest depth wins: a label that is reached by two routes is provable by the shorter
+   * one, and a summary is a may-fact.
+   *
+   * @param label the taint label
+   * @param depth the number of interprocedural hops the label took
+   */
+  private void recordLabelDepth(String label, int depth) {
+    if (label == null || depth <= 0) {
+      return;
+    }
+    Integer existing = taintLabelDepth.get(label);
+    if (existing == null || depth < existing.intValue()) {
+      taintLabelDepth.put(label, depth);
+    }
+  }
+
+  /**
+   * Report that the context-depth budget cut a call's taint off.
+   *
+   * <p>This is a budget exhaustion, not a finding: it says "the analysis of this call site was
+   * incomplete", and it travels on the same channel as every other budget exhaustion (the summary
+   * cache filling up, a per-function timeout), so a reader of the run sees that the findings are a
+   * subset of what a deeper budget would have found.
+   *
+   * @param ctx the analysis context
+   * @param calleeSig the callee whose taint was not folded
+   * @param hops how many hops away the taint was
+   */
+  private void recordContextDepthTruncation(AnalysisContext ctx, String calleeSig, int hops) {
+    if (ctx == null || ctx.budget() == null) {
+      return;
+    }
+    ctx.budget()
+        .record(
+            AnalysisBudget.Dimension.CONTEXT_DEPTH,
+            contextDepth,
+            "callee "
+                + calleeSig
+                + " carries taint "
+                + hops
+                + " hop(s) away, past the context depth of "
+                + contextDepth);
+  }
+
+  /**
+   * Whether a field write made by one function may be read by another.
+   *
+   * <p>The program-wide field stores are shared by every function in a run, so a field written in
+   * one function is visible in another. That is a CROSS-FUNCTION hop, and a context depth of zero
+   * means the analysis stays inside one function -- so at depth zero a read may only consume a
+   * write made by the function that is reading.
+   *
+   * <p>A write whose author is unknown counts as another function's: the store cannot prove the
+   * write was made here, and a setting that promises "every finding is inside one function" may not
+   * lean on a fact it cannot establish.
+   *
+   * @param writerFunction the function that made the write, or null when it is unknown
+   * @param reader the function that is reading
+   * @return true when the read may consume the write
+   */
+  private boolean mayConsumeFieldTaintFrom(String writerFunction, TacFunction reader) {
+    return mayConsumeFieldTaintFrom(
+        contextDepth, writerFunction, reader == null ? null : reader.signature());
+  }
+
+  /**
+   * Whether a field write made by one function may be read by another, at a given context depth.
+   *
+   * <p>The rule, in one place so it can be pinned by a test:
+   *
+   * <ul>
+   *   <li>A depth of one or more allows it: the program-wide field view is a coarse program-level
+   *       approximation, and the depth budget is spent on the call edges the summary fold follows,
+   *       not on this view.
+   *   <li>A depth of zero forbids it: at that depth the analysis stays inside one function, so a
+   *       write made by another function may not be consumed.
+   *   <li>A write whose author is unknown is treated as another function's: the store cannot prove
+   *       the write was made here, and a setting that promises "every finding is inside one
+   *       function" may not lean on a fact it cannot establish.
+   * </ul>
+   *
+   * @param contextDepth the configured context depth
+   * @param writerFunction the function that made the write, or null when it is unknown
+   * @param readerSignature the function that is reading, or null when it is unknown
+   * @return true when the read may consume the write
+   */
+  static boolean mayConsumeFieldTaintFrom(
+      int contextDepth, String writerFunction, String readerSignature) {
+    if (contextDepth > 0) {
+      return true;
+    }
+    if (writerFunction == null || readerSignature == null) {
+      return false;
+    }
+    return writerFunction.equals(readerSignature);
+  }
 
   /**
    * What the data flow knows about the TYPE of each value in the current function, keyed by the
@@ -998,6 +1134,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   @Override
   public void initFunction(AnalysisContext ctx, TacFunction fn) {
     taintedVars.clear();
+    taintLabelDepth.clear();
     typeEnv.clear();
     taintPaths.clear();
     sinkObservations.clear();
@@ -2373,6 +2510,10 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     List<FlowStep> l2Path = (ins.lhs2 instanceof TacOperand.TacVar rv) ? taintPaths.get(rv) : null;
     if (l1Label != null && l2Label != null) {
       taintedVars.put(dv, l1Label + "+" + l2Label);
+      // The combined label is provable by whichever side is nearer, so it takes the shallower
+      // of the two depths.
+      recordLabelDepth(
+          l1Label + "+" + l2Label, Math.min(depthOfLabel(l1Label), depthOfLabel(l2Label)));
       List<FlowStep> newPath = new ArrayList<>();
       (l1Path != null ? l1Path : List.<FlowStep>of()).forEach(newPath::add);
       newPath.add(
@@ -2941,6 +3082,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             taintPaths.put(recv, java.util.Collections.unmodifiableList(path));
           } else if (!existing.equals(label)) {
             taintedVars.put(recv, existing + "+" + label);
+            recordLabelDepth(
+                existing + "+" + label, Math.min(depthOfLabel(existing), depthOfLabel(label)));
           }
           break;
         }
@@ -3285,7 +3428,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (!precise.isEmpty()) {
       for (TacAccessPath path : precise) {
         AccessPathTaintStore.Entry entry = accessPathTaintStore.read(path);
-        if (entry != null) {
+        if (entry != null && mayConsumeFieldTaintFrom(entry.writerFunction(), fn)) {
           return new ArrayTaintTracker.TaintedEntry(entry.label(), entry.path(), -1);
         }
       }
@@ -3294,7 +3437,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     }
     for (TacAccessPath path : keyedVariablePaths(source, everyKey)) {
       AccessPathTaintStore.Entry entry = accessPathTaintStore.read(path);
-      if (entry != null) {
+      if (entry != null && mayConsumeFieldTaintFrom(entry.writerFunction(), fn)) {
         return new ArrayTaintTracker.TaintedEntry(entry.label(), entry.path(), -1);
       }
     }
@@ -4095,7 +4238,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       return;
     }
     for (org.plumb.tac.ir.TacAccessPath path : paths) {
-      accessPathTaintStore.record(path, label, flowPath);
+      accessPathTaintStore.record(path, label, flowPath, fn == null ? null : fn.signature());
     }
   }
 
@@ -4151,7 +4294,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     }
     for (org.plumb.tac.ir.TacAccessPath path : paths) {
       AccessPathTaintStore.Entry entry = accessPathTaintStore.read(path);
-      if (entry != null) return entry;
+      if (entry != null && mayConsumeFieldTaintFrom(entry.writerFunction(), fn)) {
+        return entry;
+      }
     }
     return null;
   }
@@ -4302,9 +4447,15 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         recordFieldReader(classKey, fn);
         String label = crossFnClassFieldTaint.get(classKey);
         if (label != null) {
-          foundKey = classKey;
-          foundLabel = label;
-          foundSource = crossFnClassFieldSource.get(classKey);
+          FieldSource source = crossFnClassFieldSource.get(classKey);
+          // The cross-fn tracker is a program-wide view, so an entry may have been written by
+          // another function. Reading it is a cross-function hop, which a context depth of zero
+          // does not allow.
+          if (mayConsumeFieldTaintFrom(source == null ? null : source.functionSig(), fn)) {
+            foundKey = classKey;
+            foundLabel = label;
+            foundSource = source;
+          }
         }
       }
       if (foundLabel != null) {
@@ -4688,10 +4839,10 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (valueLabel == null) return;
     TacAccessPath.Selector selector = keyedWriteSelector(ins);
     for (TacAccessPath path : keyedPrecisePaths(fn, recv, ctx, selector)) {
-      accessPathTaintStore.record(path, valueLabel, valuePath);
+      accessPathTaintStore.record(path, valueLabel, valuePath, fn == null ? null : fn.signature());
     }
     for (TacAccessPath path : keyedVariablePaths(recv, selector)) {
-      accessPathTaintStore.record(path, valueLabel, valuePath);
+      accessPathTaintStore.record(path, valueLabel, valuePath, fn == null ? null : fn.signature());
     }
   }
 
@@ -4713,14 +4864,18 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (!precise.isEmpty()) {
       for (TacAccessPath path : precise) {
         AccessPathTaintStore.Entry entry = accessPathTaintStore.read(path);
-        if (entry != null) return entry;
+        if (entry != null && mayConsumeFieldTaintFrom(entry.writerFunction(), fn)) {
+          return entry;
+        }
       }
       // The object is known and the entry is clean.
       return null;
     }
     for (TacAccessPath path : keyedVariablePaths(recv, selector)) {
       AccessPathTaintStore.Entry entry = accessPathTaintStore.read(path);
-      if (entry != null) return entry;
+      if (entry != null && mayConsumeFieldTaintFrom(entry.writerFunction(), fn)) {
+        return entry;
+      }
     }
     return null;
   }
@@ -5915,6 +6070,22 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     CalleeSummaryKeys.Resolution resolution =
         CalleeSummaryKeys.lookup(ctx.summaryCache(), calleeSig, callerEnc, ctx.classHierarchy());
     FunctionSummary calleeSummary = resolution.summary();
+    // How far the taint has to travel to reach THIS function.
+    //
+    // The context depth is a BUDGET of interprocedural hops: the analysed function may follow a
+    // taint back through at most this many call edges. The callee's summary says what the
+    // taint it hands over costs the caller: 0 when the taint is the caller's own value coming
+    // back through a formal, and the number of edges the taint has already crossed otherwise.
+    // A callee whose taint is further away than the budget reaches is not folded at all: the
+    // taint it would hand over is out of budget, and folding it would make the setting mean
+    // nothing.
+    //
+    // The limit is applied to the CONTEXT-FREE summary, which is where the depth was measured.
+    int calleeCost = calleeSummary.foldDepth();
+    if (calleeCost > contextDepth) {
+      recordContextDepthTruncation(ctx, calleeSig, calleeCost);
+      return;
+    }
     // Can this call complete normally on this path?
     //
     // The callee may publish a PRECONDITION: "formal i has to satisfy P, or the call throws".
@@ -6223,6 +6394,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         String enrichedLabel =
             enrichTaintLabelWithPassthroughs("callee-ret:" + calleeSig, calleeSummary);
         taintedVars.put(destVar, enrichedLabel);
+        // The taint crossed one more call edge on its way here, so it is now one hop deeper.
+        recordLabelDepth(enrichedLabel, calleeCost);
         // Summary-fold for the
         // return value: the dest inherits
         // taint from the callee's returnOps.
@@ -6286,6 +6459,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       String resLabel =
           enrichTaintLabelWithPassthroughs("callee-ret:" + calleeSig + "#r" + slot, calleeSummary);
       taintedVars.put(resVar, resLabel);
+      recordLabelDepth(resLabel, calleeCost);
       List<FlowStep> fold = new ArrayList<>();
       fold.add(
           new FlowStep(
@@ -6377,6 +6551,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
           continue;
         }
         taintedVars.put(outVar, outLabel);
+        recordLabelDepth(outLabel, calleeCost);
         List<FlowStep> fold = new ArrayList<>();
         fold.add(
             new FlowStep(
@@ -6540,6 +6715,14 @@ public abstract class TaintedCheckerBase implements DfaChecker {
               String prefix = recvTypeName + ".";
               for (var e : crossFnClassFieldTaint.entrySet()) {
                 if (e.getKey().startsWith(prefix)) {
+                  // The cross-fn tracker is a program-wide view, so an entry may have been
+                  // written by another function. Reading it is a cross-function hop, which a
+                  // context depth of zero does not allow.
+                  FieldSource source = crossFnClassFieldSource.get(e.getKey());
+                  if (!mayConsumeFieldTaintFrom(
+                      source == null ? null : source.functionSig(), ctx.currentFunction())) {
+                    continue;
+                  }
                   argLabel = "r53-classchain:" + recvTypeName + "." + e.getValue();
                   break;
                 }
@@ -6849,7 +7032,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (paths.isEmpty()) return;
     List<FlowStep> flowPath = taintPaths.get(arg);
     for (org.plumb.tac.ir.TacAccessPath path : paths) {
-      accessPathTaintStore.record(path, label, flowPath);
+      accessPathTaintStore.record(path, label, flowPath, fn == null ? null : fn.signature());
     }
   }
 
@@ -7109,15 +7292,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         continue;
       }
       int slot = po.resultIndex();
-      if (slot == 0) {
-        b.recordReturnOp(
-            new Operation.TaintPropagate("return:" + ret.name() + " in " + fn.signature(), 1.0));
-      } else {
-        b.recordResultOp(
-            slot,
-            new Operation.TaintPropagate(
-                "result" + slot + ":" + ret.name() + " in " + fn.signature(), 1.0));
-      }
+      String retLabel = taintedVars.get(ret);
       // Which formal does this return taint flow THROUGH? The return value
       // is usually the parameter itself, or something derived from it, and
       // the parameter's taint label is the same label the returned value
@@ -7125,20 +7300,44 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // to the call sites that actually feed that parameter with taint --
       // without it, a helper called once with a tainted argument and once
       // with a clean one would taint BOTH call results.
-      String retLabel = taintedVars.get(ret);
+      int cause = -1;
       if (retLabel != null) {
         for (int i = 0; i < params.size(); i++) {
           TacOperand.TacVar p = params.get(i);
           String paramLabel = taintedVars.get(p);
           if (paramLabel != null && paramLabel.equals(retLabel)) {
-            if (slot == 0) {
-              b.recordReturnTaintCause(i);
-            } else {
-              b.recordResultTaintCause(slot, i);
-            }
+            cause = i;
             break;
           }
         }
+      }
+      // How far the taint has to travel to reach the CALLER.
+      //
+      // The two cases are not the same distance apart, and counting them the same way is how a
+      // budget turns into a false negative:
+      //
+      //   - the taint is a FORMAL's taint: it is the caller's own value, and it does not cross
+      //     the call boundary at all. The caller pays nothing for it, at any depth.
+      //   - the taint is the CALLEE's own: it came from a source inside the callee, so it
+      //     crosses the call edge on its way out, and the caller pays one more hop than the
+      //     callee already paid.
+      int callerCost = cause >= 0 ? 0 : depthOfLabel(retLabel) + 1;
+      if (slot == 0) {
+        b.recordReturnOp(
+            new Operation.TaintPropagate("return:" + ret.name() + " in " + fn.signature(), 1.0));
+        if (cause >= 0) {
+          b.recordReturnTaintCause(cause);
+        }
+        b.recordFoldDepth(callerCost);
+      } else {
+        b.recordResultOp(
+            slot,
+            new Operation.TaintPropagate(
+                "result" + slot + ":" + ret.name() + " in " + fn.signature(), 1.0));
+        if (cause >= 0) {
+          b.recordResultTaintCause(slot, cause);
+        }
+        b.recordFoldDepth(callerCost);
       }
     }
     // 1c. The taint this function writes INTO a formal parameter.
@@ -7193,6 +7392,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       }
       if (cause >= 0) {
         b.recordParamWriteCause(target, cause);
+        // The written taint is a formal's taint: it is the caller's own value, and it does not
+        // cross the call boundary. The caller pays nothing for it, at any depth.
+        b.recordFoldDepth(0);
       } else {
         b.recordParamWriteOp(
             target,
@@ -7200,6 +7402,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
                 "out:" + params.get(target).name() + " in " + fn.signature(),
                 1.0,
                 taintOriginOf(writtenLabel)));
+        // The written taint is the callee's own, so it crosses the call edge on its way out.
+        b.recordFoldDepth(depthOfLabel(writtenLabel) + 1);
       }
     }
     // 2. For each observed sink call, record

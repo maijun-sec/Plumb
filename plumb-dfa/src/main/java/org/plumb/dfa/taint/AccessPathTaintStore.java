@@ -57,15 +57,33 @@ public final class AccessPathTaintStore {
   public static final class Entry {
     private final String label;
     private final List<org.plumb.reporter.FlowStep> path;
+    // The function that made the write this entry records. The store is shared by every
+    // function in a run, so this is what tells a reader whether the taint it is looking at
+    // was established in ITS OWN frame or in another one.
+    private final String writerFunction;
 
     Entry(String label, List<org.plumb.reporter.FlowStep> path) {
+      this(label, path, null);
+    }
+
+    Entry(String label, List<org.plumb.reporter.FlowStep> path, String writerFunction) {
       this.label = label;
       this.path = path == null ? List.of() : List.copyOf(path);
+      this.writerFunction = writerFunction;
     }
 
     /** The taint label. */
     public String label() {
       return label;
+    }
+
+    /**
+     * The function that made the write.
+     *
+     * @return the writing function's signature, or null when the write's author is unknown
+     */
+    public String writerFunction() {
+      return writerFunction;
     }
 
     /** The flow steps that lead here. */
@@ -84,8 +102,28 @@ public final class AccessPathTaintStore {
    * @param flowPath the flow steps leading to it
    */
   public void record(TacAccessPath path, String label, List<org.plumb.reporter.FlowStep> flowPath) {
+    record(path, label, flowPath, null);
+  }
+
+  /**
+   * Records taint at a location, naming the function that made the write.
+   *
+   * <p>The store is shared by every function in a run, so the author of a write is what tells a
+   * reader whether it is looking at taint from its own frame or from another one.
+   *
+   * @param path the location
+   * @param label the taint label
+   * @param flowPath the flow steps leading to it
+   * @param writerFunction the signature of the function that made the write, or null when it is
+   *     unknown
+   */
+  public void record(
+      TacAccessPath path,
+      String label,
+      List<org.plumb.reporter.FlowStep> flowPath,
+      String writerFunction) {
     if (path == null) return;
-    byPath.put(path, new Entry(label, flowPath));
+    byPath.put(path, new Entry(label, flowPath, writerFunction));
   }
 
   /**

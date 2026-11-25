@@ -184,6 +184,24 @@ public final class FunctionSummary {
   // return value, and a caller cannot narrow the two separately unless the summary says
   // which is which.
   private final Map<Integer, Set<Integer>> paramWriteCauses;
+  // How many interprocedural hops the taint this summary hands to its caller has ALREADY
+  // crossed by the time it lands in the caller's hands.
+  //
+  // A summary that says "my return value may be tainted" is only useful to a caller if the
+  // caller can say HOW FAR the taint is from the sink it is looking at. When the callee read
+  // the source itself, the taint has crossed one edge to reach the caller. When the callee got
+  // the taint from its own callee, it has crossed two. The number is the depth of the
+  // SHALLOWEST proof, because a summary is a MAY-fact: the caller may use the shallowest proof
+  // it was given.
+  //
+  // A taint that is a FORMAL's taint -- the caller's own value coming back through a parameter
+  // -- has crossed NO edge, because it never left the caller's frame. It is recorded as 0, and
+  // the caller may use it at any depth.
+  //
+  // Null means the summary hands out NO taint of its own (no return taint of its own, no result
+  // taint of its own, no taint of its own written into a formal). Folding such a summary
+  // costs the caller nothing, so the accessor reports 0 for it.
+  private final Integer foldDepth;
 
   private FunctionSummary(
       String signature,
@@ -209,7 +227,8 @@ public final class FunctionSummary {
         Map.of(),
         Map.of(),
         Map.of(),
-        Map.of());
+        Map.of(),
+        null);
   }
 
   private FunctionSummary(
@@ -227,7 +246,8 @@ public final class FunctionSummary {
       Map<Integer, Set<Operation>> resultOps,
       Map<Integer, Set<Integer>> resultTaintCauses,
       Map<Integer, Set<Operation>> paramWriteOps,
-      Map<Integer, Set<Integer>> paramWriteCauses) {
+      Map<Integer, Set<Integer>> paramWriteCauses,
+      Integer foldDepth) {
     this.signature = signature;
     // Defensive: wrap in unmodifiable views so
     // the builder can hand out the underlying
@@ -295,6 +315,7 @@ public final class FunctionSummary {
       }
     }
     this.paramWriteCauses = Collections.unmodifiableMap(unmodWriteCauses);
+    this.foldDepth = foldDepth;
   }
 
   /**
@@ -341,6 +362,9 @@ public final class FunctionSummary {
     // The taint written INTO each formal parameter, and the formals it flows through.
     private final Map<Integer, Set<Operation>> paramWriteOps = new HashMap<>();
     private final Map<Integer, Set<Integer>> paramWriteCauses = new HashMap<>();
+    // The depth of the shallowest proof of the taint this summary hands to its caller. Null
+    // until a checker records one, which means "this summary hands out no taint".
+    private Integer foldDepth;
 
     public Builder(String signature) {
       this.signature = Objects.requireNonNull(signature, "signature");
@@ -559,6 +583,31 @@ public final class FunctionSummary {
       return this;
     }
 
+    /**
+     * Record how many interprocedural hops the shallowest proof of the taint this summary hands to
+     * its caller costs.
+     *
+     * <p>The depth is counted from THIS function's frame: 0 means the taint was established inside
+     * this function, 1 means it came from a direct callee, and so on. A caller that folds this
+     * summary pays one more hop than this number.
+     *
+     * <p>The shallowest proof wins, because the summary is a may-fact: a caller may use the proof
+     * that reached the origin by the shortest route. Recording a deeper number afterwards therefore
+     * does not raise the summary's depth.
+     *
+     * @param depth the number of hops the proof costs
+     * @return this builder
+     */
+    public Builder recordFoldDepth(int depth) {
+      if (depth < 0) {
+        return this;
+      }
+      if (foldDepth == null || depth < foldDepth) {
+        foldDepth = depth;
+      }
+      return this;
+    }
+
     public FunctionSummary build() {
       return new FunctionSummary(
           signature,
@@ -575,12 +624,43 @@ public final class FunctionSummary {
           resultOps,
           resultTaintCauses,
           paramWriteOps,
-          paramWriteCauses);
+          paramWriteCauses,
+          foldDepth);
     }
   }
 
   public String signature() {
     return signature;
+  }
+
+  /**
+   * How many interprocedural hops the taint this summary hands to its caller has already crossed by
+   * the time it reaches the caller.
+   *
+   * <p>A caller that folds this summary pays this many hops, so the engine's configured context
+   * depth bounds it: a callee whose taint is already further away than the budget reaches is not
+   * folded at all.
+   *
+   * <p>Zero means the summary hands out the CALLER's own taint (it came back through a formal) or
+   * no taint of its own, so folding it costs nothing.
+   *
+   * @return the fold depth of this summary
+   */
+  public int foldDepth() {
+    return foldDepth == null ? 0 : foldDepth.intValue();
+  }
+
+  /**
+   * Whether this summary records a fold depth at all.
+   *
+   * <p>The distinction matters when two summaries are merged: a summary that hands out no taint of
+   * its own contributes no depth, while a summary that hands out the caller's own taint contributes
+   * zero. Merging them must keep the zero.
+   *
+   * @return true when a fold depth was recorded
+   */
+  public boolean hasFoldDepth() {
+    return foldDepth != null;
   }
 
   public Map<Integer, Set<Operation>> paramOps() {
@@ -863,7 +943,23 @@ public final class FunctionSummary {
     // which parameters the return taint flows through. Narrowing that
     // would change the summary's meaning.
     for (Integer cause : returnTaintCauses) b.recordReturnTaintCause(cause);
+    copyFoldDepthTo(b);
     return b.build();
+  }
+
+  /**
+   * Carry this summary's fold depth into a copy.
+   *
+   * <p>A projection drops operations, and the dropped ones might have been the shallowest proof.
+   * The copy therefore keeps the ORIGINAL depth rather than recomputing one: that makes the depth
+   * limit weaker than it could be, which keeps evidence the limit would otherwise have removed.
+   * Losing a finding is worse than following one hop too far.
+   */
+  private void copyFoldDepthTo(Builder b) {
+    if (foldDepth == null) {
+      return;
+    }
+    b.recordFoldDepth(foldDepth.intValue());
   }
 
   /**
@@ -944,6 +1040,7 @@ public final class FunctionSummary {
         b.recordParamWriteCause(entry.getKey().intValue(), cause.intValue());
       }
     }
+    copyFoldDepthTo(b);
     return b.build();
   }
 
@@ -1050,6 +1147,7 @@ public final class FunctionSummary {
     if (claimsBody) b.markClaimsBody();
     for (StringOp sop : stringOps) b.recordStringOp(sop);
     for (FieldOp fop : fieldOps) b.recordFieldOp(fop);
+    copyFoldDepthTo(b);
     return b.build();
   }
 
@@ -1171,6 +1269,17 @@ public final class FunctionSummary {
     }
     if (claimsBody || other.claimsBody) {
       b.markClaimsBody();
+    }
+    // The fold depth is unioned like every other fact: the merged summary hands out the taint of
+    // BOTH sides, so the cheapest proof of the merged summary is the cheaper of the two. A side
+    // that hands out no taint at all contributes no depth -- it must not make the merged summary
+    // look free to fold.
+    if (hasFoldDepth() && other.hasFoldDepth()) {
+      b.recordFoldDepth(Math.min(foldDepth.intValue(), other.foldDepth.intValue()));
+    } else if (hasFoldDepth()) {
+      b.recordFoldDepth(foldDepth.intValue());
+    } else if (other.hasFoldDepth()) {
+      b.recordFoldDepth(other.foldDepth.intValue());
     }
     return b.build();
   }

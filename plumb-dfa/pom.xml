@@ -121,6 +121,11 @@
                              scripts/check_test_coverage.py: every non-disabled test file
                              must be named here. -->
                         <include>org/plumb/dfa/engine/FindingReporterAliasTest.java</include>
+                        <!-- The context depth is a budget of call edges: depth 0 keeps every
+                             finding inside one function, and depth 1 reaches a source one
+                             call edge away while depth 2 reaches one two edges away. The
+                             setting used to behave the same for every value above zero. -->
+                        <include>org/plumb/dfa/taint/ContextDepthBudgetTest.java</include>
                         <include>org/plumb/dfa/engine/MergedProgramKeyUniquenessTest.java</include>
                         <include>org/plumb/dfa/engine/R803V2TraceChannelTest.java</include>
                         <include>org/plumb/dfa/engine/R803V2TraceIntegrationTest.java</include>
