@@ -15,6 +15,21 @@ import sys
 import tempfile
 from pathlib import Path
 
+# A gate that dies while printing its result has measured nothing. The
+# console's code page is not UTF-8 on every machine, so force the streams
+# to UTF-8 and replace what cannot be encoded instead of crashing.
+#
+# reconfigure() and not a fresh TextIOWrapper: this file is imported as a
+# module by another gate, and a second wrapper would take over the same
+# buffer. The first wrapper would then be collected, and collecting it
+# closes the buffer the new one is still using -- the next gate to wrap
+# the stream would die on a closed buffer, having measured nothing.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+
 REPO = Path(__file__).resolve().parent.parent
 MEASUREMENT = REPO / "juliet-coverage" / "scripts" / "measurement"
 GATE = REPO / "scripts" / "check_juliet_measurement.py"
@@ -24,7 +39,7 @@ def run_gate() -> bool:
     """True when the gate passes."""
     proc = subprocess.run(
         [sys.executable, str(GATE)],
-        capture_output=True,
+        capture_output=True, encoding="utf-8", errors="replace",
         text=True,
         cwd=str(REPO),
     )

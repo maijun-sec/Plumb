@@ -425,10 +425,24 @@ def python_on_path():
     return found
 
 
+def gate_env():
+    """The environment every gate runs in.
+
+    PYTHONIOENCODING=utf-8 makes each gate emit UTF-8 whatever the
+    machine's code page is. Without it, a gate that prints a non-ASCII
+    character emits bytes its caller cannot decode, and the failure lands
+    on the caller -- which is how a gate ends up reporting a verdict it
+    never measured.
+    """
+    env = dict(os.environ)
+    env["PYTHONIOENCODING"] = "utf-8"
+    return env
+
+
 def run(argv):
     cmd = [python_on_path()] + argv[1:] if argv and argv[0] == "python" else list(argv)
     proc = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace")
+                          encoding="utf-8", errors="replace", env=gate_env())
     return proc.returncode, proc.stdout + proc.stderr
 
 
