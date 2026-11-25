@@ -2863,21 +2863,52 @@ internal sealed partial class TacTranslator
         // So the slot is filled with the declaring type's name. The loss is
         // that the slot is not a VALUE -- a static call has no receiver
         // value to carry taint -- and that is exactly what a constant says.
+        //
+        // The rule the slot exists to satisfy is: THE ARGUMENT LIST IS ONE
+        // LONGER THAN THE PARAMETER LIST. Every consumer derives the number
+        // of parameters from the argument count (`args.size() - 1`) and then
+        // reads formal i at args[i+1]. An argument list that is exactly as
+        // long as the parameter list therefore reads every formal after the
+        // first one argument too far, and does not read the LAST formal at
+        // all -- and a by-reference write-back lands on the last formal.
         Operand? receiver = null;
         bool reducedExtension = method.IsExtensionMethod && method.ReducedFrom is not null;
-        if (invocation.Expression is MemberAccessExpressionSyntax memberAccess
-            && !method.IsStatic)
+        if (reducedExtension)
         {
-            receiver = TranslateExpression(memberAccess.Expression, store: false);
-            if (receiver is not null)
-            {
-                arguments.Add(receiver);
-                refOutDests.Add(null);
-            }
+            // AN EXTENSION METHOD'S RECEIVER IS ITS FIRST FORMAL -- the `this`
+            // parameter -- and it is ALSO the call's receiver.
+            //
+            // The engine reads the receiver from args[0] (a call on a
+            // possibly-null receiver is invisible without it) and binds formal i
+            // to args[i+1]. The receiver's value therefore has to be in BOTH
+            // places: at args[0], where the receiver slot is, and at args[1],
+            // where the first formal's value is.
+            //
+            // Without the second one the argument list is exactly as long as the
+            // parameter list, and the shift costs the call its last formal --
+            // which is where a by-reference write-back goes.
+            receiver = invocation.Expression is MemberAccessExpressionSyntax extensionAccess
+                ? TranslateExpression(extensionAccess.Expression, store: false)
+                : null;
+            Operand receiverValue = receiver ?? UnknownValue(invocation);
+            arguments.Add(receiverValue);
+            refOutDests.Add(null);
+            arguments.Add(receiverValue);
+            refOutDests.Add(null);
         }
-        else if (method.IsStatic && !reducedExtension)
+        else if (method.IsStatic)
         {
             arguments.Add(TypePlaceholder(method.ContainingType));
+            refOutDests.Add(null);
+        }
+        else if (invocation.Expression is MemberAccessExpressionSyntax memberAccess)
+        {
+            receiver = TranslateExpression(memberAccess.Expression, store: false);
+            // The receiver did not lower. The slot still has to be there: without
+            // it the arguments shift and every formal is read one argument too
+            // far. An unknown value says "not known", which is what a receiver
+            // that did not lower is.
+            arguments.Add(receiver ?? UnknownValue(invocation));
             refOutDests.Add(null);
         }
 
@@ -4653,6 +4684,32 @@ internal sealed partial class TacTranslator
             ConstKind = "STRING",
             Value = TypeMapper.FullName(type),
         };
+    }
+
+    /// <summary>
+    /// A value the analysis does not know, for a receiver that did not lower.
+    /// </summary>
+    /// <param name="node">the node the unknown stands in for</param>
+    /// <returns>the operand, whose value the engine reads as unknown</returns>
+    /// <remarks>
+    /// <para>
+    /// The slot for a receiver has to be there even when the receiver's
+    /// expression did not lower: the engine derives the number of parameters
+    /// from the argument count and reads formal i at args[i+1], so a missing
+    /// slot shifts every argument one place to the left and every formal is
+    /// read one argument too far.
+    /// </para>
+    /// <para>
+    /// The value is unknown rather than absent: a receiver that did not lower
+    /// is not known to be clean, and saying so would be a claim the analysis
+    /// cannot make. A HAVOC is what "not known" is written as in this IR.
+    /// </para>
+    /// </remarks>
+    private Operand UnknownValue(SyntaxNode node)
+    {
+        var unknown = NewTemp();
+        Emit(InstructionKind.HAVOC, dest: unknown, node: node);
+        return unknown;
     }
 
     /// <summary>The constant value of a field whose value the compiler knows.</summary>
