@@ -175,7 +175,8 @@ public enum BinaryOperator {
     ADD, SUB, MUL, DIV, MOD,
     AND, OR, XOR, SHL, SHR, USHR,
     EQ, NE, LT, LE, GT, GE,
-    LAND, LOR
+    LAND, LOR,
+    LOOSE_EQ, LOOSE_NE
 }
 
 public enum UnaryOperator {
@@ -186,6 +187,8 @@ public enum UnaryOperator {
 ```
 
 The target type of `CAST` is on `TacInstruction.castType`. `LAND`/`LOR` are the short-circuiting and/or operators (the rhs is not forced to be evaluated).
+
+`LOOSE_EQ`/`LOOSE_NE` are the loose comparisons: the language coerces the operands before comparing them (JavaScript's `==`, Python's `==` on mixed types). They are **not** the same comparison as `EQ`/`NE` -- `0 == "0"` is true under loose equality and false under strict equality, so a rule that reads a loose comparison as a strict one draws conclusions the program does not support.
 
 ### 4.2 CALL signature
 

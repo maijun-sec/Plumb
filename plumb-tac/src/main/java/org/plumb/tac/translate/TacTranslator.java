@@ -561,8 +561,12 @@ public final class TacTranslator {
     // String password = "literal"} invisible to FIELDSTORE-based checks. We
     // emit a default-argument {@code <init>} that holds one FIELDSTORE per
     // initialized instance field; if a real constructor is present, the real one
-    // wins (we don't double-emit). The synthetic {@code <init>} is what
-    // {@link org.plumb.dfa.checker.FieldHardcodedPasswordCheck} looks at.
+    // wins (we don't double-emit). The synthetic {@code <init>} is what makes
+    // those initializations visible to the FIELDSTORE-based checks, such as
+    // {@link org.plumb.dfa.checkers.taint.UnusedFieldChecker} and the field
+    // taint tracking in {@link org.plumb.dfa.taint.TaintedCheckerBase}. The
+    // hardcoded-password case itself is covered at AST level (CWE-798 /
+    // CWE-259); the DFA checker that used to read these writes is gone.
     boolean hasExplicitCtor = false;
     for (BodyDeclaration<?> bd : members) {
       if (bd instanceof ConstructorDeclaration) {
