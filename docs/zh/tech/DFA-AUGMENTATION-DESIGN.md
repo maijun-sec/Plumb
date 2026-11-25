@@ -362,9 +362,12 @@ DFA 增强的"单条 Z3 query"（Phase 2 per-finding 验证）见 `tech/CROSS-FU
 （污点 checker 找 `Operation.TaintPropagate`，SQL 注入 checker 找 familyKey 匹配的
 `Operation.Sink`）。
 
-其中两个变体目前只有声明、从未被构造：`Operation.UnmodelledCall` 和
-`Operation.PointsToPropagate`。它们是 sealed interface 的一部分，但没有任何代码路径
-创建它们，所以今天是惰性的。
+目前只有一个变体只有声明、从未被构造：`Operation.UnmodelledCall`。它是 sealed
+interface 的一部分，但没有任何代码路径创建它，所以今天是惰性的。
+
+`Operation.PointsToPropagate` 正好相反：它由 `DfaEngine.attachReturnPointsTo` 生产、
+由 `TaintedCheckerBase.applyReturnPointsTo` 消费，所以 callee 的指向集合能到达 caller
+的目的变量。
 
 ### 8.3 不要为 style rule 写 DFA
 

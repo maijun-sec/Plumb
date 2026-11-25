@@ -182,8 +182,16 @@ MUST_NOT_APPEAR = [
     ("cache.get(calleeSig)", "the cache is keyed by FunctionSignature"),
 ]
 
-# The Operation variants the document says are inert.
-INERT_VARIANTS = ["UnmodelledCall", "PointsToPropagate"]
+# The Operation variants the document says are inert, and the ones it
+# says are live.
+#
+# The two lists are checked in opposite directions, and the construction
+# probe has to see EVERY spelling of a construction: `new Operation.V`
+# and `new org.plumb.dfa.summary.Operation.V` are the same construction.
+# A probe that only saw the first one called a live variant inert, and
+# the document believed the probe.
+INERT_VARIANTS = ["UnmodelledCall"]
+LIVE_VARIANTS = ["PointsToPropagate"]
 
 
 def note(msg):
@@ -252,6 +260,23 @@ def config_default(cfg, switch):
 
 def read(path):
     return path.read_text(encoding="utf-8", errors="replace")
+
+
+def count_constructions(variant):
+    """How many places in the main tree construct `Operation.variant`.
+
+    Every spelling of the construction counts -- the simple name and the
+    fully-qualified one -- and a commented-out one does not: a
+    construction inside a comment constructs nothing.
+    """
+    pattern = re.compile(r"new\s+(?:[\w.]+\.)?Operation\.%s\b" % re.escape(variant))
+    n = 0
+    for p in DFA.rglob("*.java"):
+        if p.name == "Operation.java":
+            continue
+        if pattern.search(code_only(read(p))):
+            n += 1
+    return n
 
 
 def main():
@@ -902,12 +927,7 @@ def check_document(doc, path):
                     "the document says Operation.%s is inert, but the sealed "
                     "interface does not declare it" % variant)
                 continue
-            built = 0
-            for p in DFA.rglob("*.java"):
-                if p.name == "Operation.java":
-                    continue
-                if ("new Operation.%s" % variant) in read(p):
-                    built += 1
+            built = count_constructions(variant)
             if built:
                 failures.append(prefix +
                     "the document says Operation.%s is never constructed, but "
@@ -919,6 +939,27 @@ def check_document(doc, path):
                     "the document no longer names Operation.%s, so the note "
                     "that it is inert has been lost" % variant)
         note("checked %d inert Operation variant(s)" % len(INERT_VARIANTS))
+
+        # The mirror image: a variant the document says is live must
+        # really be produced. Without this the gate could not tell the
+        # difference between "nobody builds this" and "the probe is
+        # looking for the wrong spelling".
+        for variant in LIVE_VARIANTS:
+            if variant not in declared:
+                failures.append(prefix +
+                    "the document says Operation.%s is live, but the sealed "
+                    "interface does not declare it" % variant)
+                continue
+            built = count_constructions(variant)
+            if not built:
+                failures.append(prefix +
+                    "the document says Operation.%s is produced, but no "
+                    "place produces it" % variant)
+            if ("Operation.%s" % variant) not in doc:
+                failures.append(prefix +
+                    "the document no longer names Operation.%s, so the note "
+                    "that it is live has been lost" % variant)
+        note("checked %d live Operation variant(s)" % len(LIVE_VARIANTS))
     else:
         failures.append(prefix + "%s does not exist" % op)
 

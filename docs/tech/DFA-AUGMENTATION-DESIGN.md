@@ -383,9 +383,12 @@ the individual checkers, each of which projects only the operations it cares abo
 checker looks for `Operation.TaintPropagate`, a SQL-injection checker for `Operation.Sink` with
 the matching `familyKey`).
 
-Two variants are currently only declared and never produced: `Operation.UnmodelledCall` and
-`Operation.PointsToPropagate`. They are part of the sealed interface but no code path creates
-them, so they are inert today.
+One variant is currently only declared and never produced: `Operation.UnmodelledCall`. It is
+part of the sealed interface but no code path creates it, so it is inert today.
+
+`Operation.PointsToPropagate` is the opposite case: it is produced by
+`DfaEngine.attachReturnPointsTo` and consumed by `TaintedCheckerBase.applyReturnPointsTo`, so a
+callee's points-to set reaches the caller's destination.
 
 ### 8.3 Do not write a DFA for a style rule
 

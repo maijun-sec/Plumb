@@ -21,7 +21,7 @@ This document explains the two-phase cross-function analysis design of the `plum
 > - `plumb-dfa/src/main/java/org/plumb/dfa/summary/SummaryApplier.java` ——
 > - `plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintedCheckerBase.java` ——
 > - `plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintDomain.java` ——
-> - `plumb-dfa/src/main/java/org/plumb/dfa/points/PointsToAnalysis.java` ——
+> - `plumb-dfa/src/main/java/org/plumb/dfa/points/PointsToSolver.java` ——
 > - `plumb-dfa/src/main/java/org/plumb/dfa/solver/PathCondition.java` + `GuardStore.java` + `Z3Bridge.java` + `LocalSolverBridge.java`
 > - `plumb-dfa/src/main/java/org/plumb/dfa/engine/DfaEngine.java` — engine scheduling
 
@@ -522,17 +522,20 @@ The whole chain spans two functions and 3 instructions, and the engine maintains
 
 ### 3.4 Cross-function PointsTo
 
-`PointsToAnalysis.applyCalleeSummary(dest, summary)` merges `PointsToSummary.returnAllocSites`
-into the caller's points-to map. The flow:
+`DfaEngine.attachReturnPointsTo` records the objects the callee may return into the callee's summary,
+and `TaintedCheckerBase.applyReturnPointsTo` hands them to the caller's destination. The flow:
 
-1. `PointsToAnalysis.buildSummary()` collects every `AllocSite` produced by `NEW /
-   NEWARRAY` inside the callee in Phase 1, encodes them as a set of `"functionSig\0insnIdx\0type"` strings
-   (written into `Operation.PointsToPropagate(allocSites)` of the `FunctionSummary`).
-2. `PointsToAnalysis.applyCalleeSummary` parses these strings in Phase 2 and fills them back into
-   the caller's `pointsTo(dest)`, so that `isUseAfterFree` can correctly see, from the caller's point of
-   view, "a pointer allocated inside the callee flowed into the caller's dest".
+1. In Phase 1 the solver's `PointsToSolver.returnObjectsOf(fn.signature())` answers "which objects may
+   this method return?" — the union over the method's contexts, because a caller does not know which
+   context it will run in. `DfaEngine.attachReturnPointsTo` turns each of them into its solver label
+   (`site.type@context`) and writes the labels into `Operation.PointsToPropagate(allocSites)` of the
+   `FunctionSummary`'s return operations.
+2. In Phase 2 `TaintedCheckerBase.applyReturnPointsTo` maps the labels back onto the solver's own objects
+   and calls `PointsToSolver.addPointsTo`, so the caller's `pointsTo(dest)` sees, from the caller's point of
+   view, "an object allocated inside the callee flowed into the caller's dest". A label the solver no
+   longer knows is dropped, and the update is a union rather than a replacement.
 
-The use-after-free / alias checkers are the biggest beneficiaries of this design — a tabulation solution that
+The alias and null checkers are the biggest beneficiaries of this design — a tabulation solution that
 treats points-to as yet another fact in the worklist blows up the state space; Plumb bypasses that dimension with an
 independent points-to solver (`PointsToSolver`, one whole-program solve) + summaries.
 

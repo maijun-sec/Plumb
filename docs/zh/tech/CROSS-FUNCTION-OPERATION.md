@@ -15,7 +15,7 @@ Phase 2 在 caller 视角上做的分析并不是单一类型，而是**多套�
 | # | 分析 | Summary 端 | Phase 2 消费侧 | 关键类 |
 | --- | --- | --- | --- | --- |
 | 1 | **常量传播** | `MethodSummary.returnShape` 的 `RETURN_CONST` / `RETURN_PARAM` / `RETURN_BINARY_OP` / `RETURN_CONDITIONAL` 形态 | `SummaryApplier.applyReturnValue` 编码成 `RETURN_VALUE_FOLDED(dest, "const:N")` / `"param:0:callerArg"` / `"binop:op:lhs:rhs"` / `"cond:..."` 写入 caller fact bag；下游 checker 按 value 字符串决定后续分析 | `MethodSummaryBuilder` + `SummaryApplier` + `LiteralBooleanConditionChecker` |
-| 2 | **指向分析** | `Operation.PointsToPropagate(allocSites)` 收集 callee 内 `NEW / NEWARRAY` 的 `AllocSite` | `PointsToAnalysis.applyCalleeSummary(dest, summary)` 把 alloc sites 并入 caller 的 `pointsTo(dest)`；`mayAlias` / `isUseAfterFree` 在 caller 视角检查 | `PointsToAnalysis` + `PointsToSummary` |
+| 2 | **指向分析** | `Operation.PointsToPropagate(allocSites)` 承载 callee 可能返回的对象的 solver 标签 | `DfaEngine.attachReturnPointsTo` 把这些标签写进 callee 的 summary；`TaintedCheckerBase.applyReturnPointsTo` 把标签映射回 solver 的对象并调用 `PointsToSolver.addPointsTo`，于是 caller 的目的变量继承 callee 的对象身份；别名与空指针问题随后由 `AnalysisContext.pointsTo` / `AnalysisContext.mayAlias` 在 caller 视角回答 | `PointsToSolver` + `DfaEngine.attachReturnPointsTo` + `Operation.PointsToPropagate` |
 | 3 | **null / 资源分析** | `TaintedCheckerBase` 在 callee 体内维护 `taintedVars`（PointerTaint 域），summary 时把每个 tainted 形参写出成 `Operation.TaintPropagate(sourceId, confidence)` | `propagateTaintFromCalleeSummary` 把 caller 实参标为 tainted；`NullDerefChecker` / `ResourceLeakChecker` 在 caller 视角检查 receiver 是否可能 null / 是否已被 close | `TaintedCheckerBase` + `TaintDomain.PointerTaint` + `Operation.TaintPropagate` |
 | 4 | **数值范围 / 整数溢出** | `TaintedCheckerBase` 用 `TaintDomain.NumericTaint` 域；callee 算术结果若 `>= MAX_INT` 之类会触发 `TaintedCheckerBase.summarizeFunction` 写出的 `Operation.TaintPropagate` | `propagateTaintFromCalleeSummary` 把数值域的 taint 沿 caller 实参传播；`IntOverflowChecker` / `IntUnderflowChecker` / `ArrayIndexChecker` / `DivByZeroChecker` 在 caller 视角用 `PathCondition` + Z3 验证条件 | `TaintedCheckerBase` + `TaintDomain.NumericTaint` + `PathCondition` + `Z3Bridge` |
 | 5 | **路径条件 / Z3 验证** | `Operation.SolverZ3Predicate(predicate, pathVars)` 把 callee 内 path-condition fragments 透出 | `TaintedCheckerBase.composePathCondition` 把 callee 的 fragments 串进 caller 的 `PathCondition`；Z3 用 caller 的 bindings 验证"antecedent && !sink-condition"是否 UNSAT（UNSAT ⇒ 路径不可达 ⇒ 抑制 finding） | `Operation.SolverZ3Predicate` + `PathCondition` + `Z3Bridge` / `LocalSolverBridge` + `GuardStore` |
@@ -42,17 +42,18 @@ Phase 2 在 caller 视角上做的分析并不是单一类型，而是**多套�
 
 唯一**严重依赖 summary 传递 alloc-site** 的子分析：
 
-- **Summary 端**：`PointsToAnalysis.buildSummary` 收集 callee 内所有
-  `AllocSite`，编码成 `functionSig\0insnIdx\0type` 字符串集合（`\0` 分隔避免
-  跟其它字符冲突），写进 `FunctionSummary.paramOps` 或 `returnOps` 的
-  `Operation.PointsToPropagate(allocSites)`。
-- **Phase 2 端**：`applyCalleeSummary(dest, summary)` 解析字符串、回填
-  `pointsTo(dest)`，让 `isUseAfterFree(dest)` 能在 caller 视角正确检查
-  "dest 是不是 alias 到 callee 内已经 `close()` 过的 alloc"。
-- **上下文敏感的体现**：`dest` 是 caller 的具体变量，alloc site 是 callee
-  视角的 symbol——`applyCalleeSummary` 把两者用 `pointsTo[dest] ⊇
-  callee.returnAllocSites` 接起来。`dest` 在不同 caller 里指向不同的 caller
-  变量，但接到的 alloc sites 集合相同（callee 决定的）。
+- **Summary 端**：`DfaEngine.attachReturnPointsTo` 向 solver 询问 callee 可能返回的
+  对象（`PointsToSolver.returnObjectsOf`，是该方法各 context 的并集），把每个对象转成
+  它的 solver 标签（`site.type@context`），再把标签写进 summary 的返回操作
+  `Operation.PointsToPropagate(allocSites)`。集合为空时不产生任何操作。
+- **Phase 2 端**：`TaintedCheckerBase.applyReturnPointsTo` 在调用点把标签映射回 solver
+  自己的对象（`PointsToSolver.allObjects`），交给 `PointsToSolver.addPointsTo`，于是
+  caller 的目的变量继承 callee 的对象身份。solver 已不认识的标签会被丢弃而不是被
+  信任，这次更新是并集：只会把 caller 的指向集合变大。
+- **上下文敏感的体现**：`dest` 是 caller 的具体变量，标签则是 solver 对 callee 返回
+  对象的身份——`applyReturnPointsTo` 把两者用 `pointsTo[dest] ⊇ callee.returnObjects`
+  接起来。`dest` 在不同 caller 里指向不同的 caller 变量，但接到的对象集合由 callee
+  决定。
 
 ### 5.4 null / 资源分析 (Nullness / Resource)
 

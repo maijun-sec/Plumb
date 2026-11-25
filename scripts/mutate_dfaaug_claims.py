@@ -46,6 +46,8 @@ SCAN_RUNNER = (REPO / "plumb-main" / "src" / "main" / "java" / "org" /
                "plumb" / "main" / "ScanRunner.java")
 SCAN_CONFIG = (REPO / "plumb-main" / "src" / "main" / "java" / "org" /
                "plumb" / "main" / "ScanConfig.java")
+DFA_ENGINE = (REPO / "plumb-dfa" / "src" / "main" / "java" / "org" /
+              "plumb" / "dfa" / "engine" / "DfaEngine.java")
 PYTHON = sys.executable
 
 
@@ -154,8 +156,22 @@ MUTANTS = [
      "`getByString(String)` for the canonical spelling"),
     ("wrong-inert-variant",
      DOC,
-     "`Operation.UnmodelledCall` and\n`Operation.PointsToPropagate`",
-     "`Operation.Sink` and\n`Operation.PassThrough`"),
+     "only declared and never produced: `Operation.UnmodelledCall`",
+     "only declared and never produced: `Operation.Sink`"),
+    # The variant the document says is LIVE must really be produced.
+    # The producer writes it under its fully-qualified name, so this
+    # mutant is also the witness that the construction probe sees
+    # every spelling: a probe that only matched `new Operation.` would
+    # survive this mutant.
+    ("live-variant-not-produced",
+     DFA_ENGINE,
+     "b.recordReturnOp(new org.plumb.dfa.summary.Operation.PointsToPropagate(labels));",
+     "b.recordReturnOp(null);"),
+    # A document that stops naming the live variant has lost the claim.
+    ("live-variant-claim-dropped",
+     DOC,
+     "`Operation.PointsToPropagate` is the opposite case",
+     "The points-to variant is the opposite case"),
     # --- the signature format goes back to the wrong one ---------------
     ("wrong-signature-format",
      DOC,

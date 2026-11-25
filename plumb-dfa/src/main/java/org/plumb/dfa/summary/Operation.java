@@ -309,16 +309,14 @@ public sealed interface Operation
    * exposes at one of its exits: either through its return value, or through a field it writes to a
    * heap object the caller passed in.
    *
-   * <p>The callee-side {@link org.plumb.dfa.points.PointsToAnalysis} populates this op at {@code
-   * summarizeFunction} time; the caller-side checker queries the callee's summary via {@code
-   * summary.returnOps()} or {@code summary.paramOps()} and uses the propagated allocation
-   * identifiers to refine its own points-to set for the caller's dest or for subsequent field reads
-   * on the caller's receiver.
+   * <p>The producer is {@code DfaEngine.attachReturnPointsTo}, which asks the points-to solver for
+   * the function's return objects and records their labels here; the consumer is the taint
+   * checker's {@code applyReturnPointsTo}, which maps the labels back onto the solver's objects and
+   * refines the caller's destination with them.
    *
-   * <p>The {@code allocSites} set is the symbolic alloc-site identifiers (as defined by {@link
-   * org.plumb.dfa.points.PointsToAnalysis.AllocSite}). A callee that allocates internally and
-   * returns the allocation encodes those alloc sites here; a caller that re-uses the return value
-   * inherits the same alloc sites in its own points-to map.
+   * <p>The {@code allocSites} set holds the solver's own object labels ({@code site.type@context}),
+   * not a second and parallel notion of allocation identity: the consumer looks the labels up in
+   * the solver, so a label that no longer names a known object is dropped rather than trusted.
    */
   record PointsToPropagate(java.util.Set<String> allocSites) implements Operation {
     public PointsToPropagate {

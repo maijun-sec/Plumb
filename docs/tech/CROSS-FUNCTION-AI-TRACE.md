@@ -84,8 +84,12 @@ that the summary has already merged away.
   the shape of the summaries produced by `MethodSummaryBuilder`.
 - `plumb-dfa/src/test/.../taint/GuardTrackerTest` — the retention and invalidation of
   guard facts in cross-function propagation.
-- `plumb-dfa/src/test/.../points/R1106PointsToSolverTest` —
-  `applyCalleeSummary` connecting a `new` inside the callee to the caller's dest.
+- `plumb-dfa/src/test/.../points/R1106PointsToSolverTest` — the solver's own
+  propagation rules, called by hand.
+- `plumb-dfa/src/test/.../summary/PointsToSummaryWiringTest` — the engine's own
+  summary builder attaching `Operation.PointsToPropagate` to the summary it publishes.
+- `plumb-dfa/src/test/.../summary/PointsToPropagationTest` — the caller side
+  connecting a `new` inside the callee to the caller's dest.
 
 ## 9. Known limitations / future work
 

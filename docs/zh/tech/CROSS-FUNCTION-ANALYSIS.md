@@ -21,7 +21,7 @@
 > - `plumb-dfa/src/main/java/org/plumb/dfa/summary/SummaryApplier.java` ——
 > - `plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintedCheckerBase.java` ——
 > - `plumb-dfa/src/main/java/org/plumb/dfa/taint/TaintDomain.java` ——
-> - `plumb-dfa/src/main/java/org/plumb/dfa/points/PointsToAnalysis.java` ——
+> - `plumb-dfa/src/main/java/org/plumb/dfa/points/PointsToSolver.java` ——
 > - `plumb-dfa/src/main/java/org/plumb/dfa/solver/PathCondition.java` + `GuardStore.java` + `Z3Bridge.java` + `LocalSolverBridge.java`
 > - `plumb-dfa/src/main/java/org/plumb/dfa/engine/DfaEngine.java` —— 引擎调度
 
@@ -513,17 +513,20 @@ void saveUser(int id) {
 
 ### 3.4 跨函数 PointsTo
 
-`PointsToAnalysis.applyCalleeSummary(dest, summary)` 把 `PointsToSummary.returnAllocSites`
-并入 caller 的 points-to map。流程：
+`DfaEngine.attachReturnPointsTo` 把 callee 可能返回的对象记进 callee 的 summary，
+`TaintedCheckerBase.applyReturnPointsTo` 再把它们交给 caller 的目的变量。流程：
 
-1. `PointsToAnalysis.buildSummary()` 在 Phase 1 收集 callee 内所有 `NEW /
-   NEWARRAY` 产生的 `AllocSite`，编码为 `"functionSig\0insnIdx\0type"` 字符串集
-   合（写进 `FunctionSummary` 的 `Operation.PointsToPropagate(allocSites)`）。
-2. `PointsToAnalysis.applyCalleeSummary` 在 Phase 2 解析这些字符串、回填到
-   caller 的 `pointsTo(dest)`，于是 `isUseAfterFree` 能在 caller 视角正确
-   看到 "callee 内部分配的指针，流到了 caller 的 dest"。
+1. Phase 1 里 solver 的 `PointsToSolver.returnObjectsOf(fn.signature())` 回答"这个方法
+   可能返回哪些对象"——是该方法各 context 的并集，因为 caller 并不知道自己会落在哪个
+   context。`DfaEngine.attachReturnPointsTo` 把每个对象转成它的 solver 标签
+   （`site.type@context`），写进 `FunctionSummary` 返回操作里的
+   `Operation.PointsToPropagate(allocSites)`。
+2. Phase 2 里 `TaintedCheckerBase.applyReturnPointsTo` 把标签映射回 solver 自己的对象，
+   再调用 `PointsToSolver.addPointsTo`，于是 caller 的 `pointsTo(dest)` 在 caller 视角
+   看到"callee 内部分配的对象，流到了 caller 的 dest"。solver 已不认识的标签会被丢弃，
+   这次更新是并集而不是替换。
 
-use-after-free / alias 类的 checker 是这套设计最大的受益者——tabulation 方案把
+alias / 空指针类的 checker 是这套设计最大的受益者——tabulation 方案把
 points-to 当成又一个 fact 加进 worklist 会让状态空间膨胀；Plumb 用独立的指向性求解器
 （`PointsToSolver`，全程序一次求解）+ summary 把这一维度旁路出去。
 

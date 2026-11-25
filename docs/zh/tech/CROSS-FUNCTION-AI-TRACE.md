@@ -75,8 +75,12 @@ worker:
   `MethodSummaryBuilder` 造出来的 summary 的形状。
 - `plumb-dfa/src/test/.../taint/GuardTrackerTest` —— guard 事实在跨函数传播中的
   保留与失效。
-- `plumb-dfa/src/test/.../points/R1106PointsToSolverTest` ——
-  `applyCalleeSummary` 把 callee 内的 `new` 接到 caller 的 dest 上。
+- `plumb-dfa/src/test/.../points/R1106PointsToSolverTest` —— solver 自己的传播规则，
+  由测试手工调用。
+- `plumb-dfa/src/test/.../summary/PointsToSummaryWiringTest` —— 引擎自己的 summary
+  构造器把 `Operation.PointsToPropagate` 挂到它发布的 summary 上。
+- `plumb-dfa/src/test/.../summary/PointsToPropagationTest` —— caller 侧把 callee 内的
+  `new` 接到 caller 的 dest 上。
 
 ## 9. 已知限制 / 未来工作
 
