@@ -27,7 +27,6 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.plumb.dfa.config.FactKind;
 import org.plumb.dfa.config.FactKindRegistry;
@@ -41,11 +40,6 @@ import org.plumb.tac.ir.TacType;
  * analysis and that consumer checkers read from to emit findings or contribute to the function
  * summary.
  */
-@Disabled(
-    "R787f+: pre-existing TacProgram import drift in plumb-dfa test code; references"
-        + " org.plumb.tac.ir.TacProgram but plumb-style uses different unqualified paths. Out of"
-        + " R787f scope. The checkers themselves (still in plumb-dfa module) and their scan logic"
-        + " are unchanged.")
 class FactBagTest {
 
   private static TacOperand var(String name) {

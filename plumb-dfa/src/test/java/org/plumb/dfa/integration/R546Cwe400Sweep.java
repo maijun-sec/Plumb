@@ -55,10 +55,11 @@ import org.plumb.tac.translate.TacTranslator;
 
 /** fast single-CWE sweep for CWE-400. */
 @Disabled(
-    "R787f+: pre-existing TacProgram import drift in plumb-dfa test code; references"
-        + " org.plumb.tac.ir.TacProgram but plumb-style uses different unqualified paths. Out of"
-        + " R787f scope. The checkers themselves (still in plumb-dfa module) and their scan logic"
-        + " are unchanged.")
+    "This class MEASURES: it walks a corpus, reports the numbers, and writes them out. It has"
+        + " no assertion, so a green here says nothing about the engine -- which is why it is"
+        + " not a CI guard. The old reason (a TacProgram import drift) was false: the import is"
+        + " org.plumb.tac.ir.TacProgram and that type exists. Run it explicitly when the numbers"
+        + " are wanted.")
 class R546Cwe400Sweep {
 
   private static final Path JULIET_ROOT = Paths.get("D:/work/tmp/Juliet_Java/src/testcases");

@@ -66,6 +66,8 @@
  */
 package org.plumb.dfa.integration;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -76,7 +78,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.plumb.dfa.checkers.taint.CommandInjectionChecker;
@@ -108,11 +109,6 @@ import org.plumb.reporter.Finding;
 import org.plumb.tac.ir.TacProgram;
 import org.plumb.tac.translate.TacTranslator;
 
-@Disabled(
-    "R787f+: pre-existing TacProgram import drift in plumb-dfa test code; references"
-        + " org.plumb.tac.ir.TacProgram but plumb-style uses different unqualified paths. Out of"
-        + " R787f scope. The checkers themselves (still in plumb-dfa module) and their scan logic"
-        + " are unchanged.")
 class R10RealCodebaseBaseline {
 
   private static final Path JULIET_ROOT = Paths.get("D:/work/tmp/Juliet_Java/src/testcases");
@@ -122,13 +118,66 @@ class R10RealCodebaseBaseline {
   }
 
   /**
-   * The set of CWE dirs we want baseline coverage on. Skipping the huge CWE-23 / CWE-36 / CWE-78
-   * (1800+ files each) to keep the baseline run under 30 minutes.
+   * The Juliet directories this baseline covers.
+   *
+   * <p>Every checker this baseline loads has at least one directory here, so a checker that stops
+   * firing cannot hide behind a directory nobody scans.
+   *
+   * <p><b>Why this list is not empty.</b> It was: {@code List.of()}. The test was green while
+   * scanning zero files, and the javadoc above it still described which CWE directories it wanted.
+   * A green test that measured nothing looks exactly like a guard, which is worse than no test.
+   *
+   * <p><b>Why the sizes are not what the old javadoc said.</b> It named CWE-23 / CWE-36 / CWE-78 as
+   * the huge ones at "1800+ files each"; they carry 720. The directories that really are that large
+   * are CWE-89 (3660), CWE-789 (2537), CWE-113 (2196) and the integer families -- and each of the
+   * three the old javadoc did name is here anyway, at its real size.
    */
-  private static final List<String> BASELINE_CWES = List.of();
+  private static final List<String> BASELINE_CWES =
+      List.of(
+          "CWE259_Hard_Coded_Password",
+          "CWE321_Hard_Coded_Cryptographic_Key",
+          "CWE256_Plaintext_Storage_of_Password",
+          "CWE601_Open_Redirect",
+          "CWE78_OS_Command_Injection");
+
+  /**
+   * The whole corpus: 11,224 Juliet files, about sixteen minutes at the rate the sweep measured.
+   *
+   * <p>It does not belong in the surefire include list -- a guard that taxes every build by a
+   * quarter of an hour stops being run. It is one system property away:
+   *
+   * <pre>{@code -Dplumb.junit.fullBaseline=true}</pre>
+   */
+  private static final List<String> FULL_BASELINE_CWES =
+      List.of(
+          "CWE259_Hard_Coded_Password",
+          "CWE321_Hard_Coded_Cryptographic_Key",
+          "CWE256_Plaintext_Storage_of_Password",
+          "CWE78_OS_Command_Injection",
+          "CWE23_Relative_Path_Traversal",
+          "CWE36_Absolute_Path_Traversal",
+          "CWE90_LDAP_Injection",
+          "CWE643_Xpath_Injection",
+          "CWE601_Open_Redirect",
+          "CWE134_Uncontrolled_Format_String",
+          "CWE113_HTTP_Response_Splitting",
+          "CWE89_SQL_Injection",
+          "CWE789_Uncontrolled_Mem_Alloc");
+
+  /**
+   * The directories this run walks.
+   *
+   * <p>The default is the CI-sized set: one small directory per checker family, about 1,560 files
+   * and a couple of minutes. The full set is a benchmark, not a guard.
+   *
+   * @return the directories to walk
+   */
+  private static List<String> cwesToScan() {
+    return Boolean.getBoolean("plumb.junit.fullBaseline") ? FULL_BASELINE_CWES : BASELINE_CWES;
+  }
 
   @Test
-  @org.junit.jupiter.api.Timeout(value = 30, unit = TimeUnit.MINUTES)
+  @org.junit.jupiter.api.Timeout(value = 45, unit = TimeUnit.MINUTES)
   @EnabledIf("julietRootExists")
   void runJulietBaseline() throws Exception {
     long start = System.currentTimeMillis();
@@ -177,7 +226,10 @@ class R10RealCodebaseBaseline {
 
     int totalFiles = 0;
     int totalFires = 0;
-    for (String cweName : BASELINE_CWES) {
+    int dirsScanned = 0;
+    int parseFailures = 0;
+    String firstFailure = null;
+    for (String cweName : cwesToScan()) {
       Path cweDir = JULIET_ROOT.resolve(cweName);
       if (!Files.isDirectory(cweDir)) {
         out.append("  ").append(cweName).append(": SKIP (dir not found)\n");
@@ -213,10 +265,18 @@ class R10RealCodebaseBaseline {
               expectedCweCount++;
             }
           }
-        } catch (Exception ignore) {
+        } catch (Exception exc) {
+          // A file the IR translation could not handle is not a reason to
+          // lose the count: an unreadable corpus is a broken baseline, and
+          // the count is what says so.
+          parseFailures++;
+          if (firstFailure == null) {
+            firstFailure = p + " -> " + exc;
+          }
         }
       }
       long elapsed = System.currentTimeMillis() - cweStart;
+      dirsScanned++;
       totalFiles += files.size();
       totalFires += findCount;
       out.append('\n')
@@ -257,6 +317,22 @@ class R10RealCodebaseBaseline {
     Files.createDirectories(outPath.getParent());
     Files.writeString(outPath, out.toString(), StandardCharsets.UTF_8);
     System.out.println(out);
+
+    // A baseline that measured nothing is not a baseline. The list used to be
+    // empty, so this test was green while scanning zero files -- and a green
+    // test that measured nothing is indistinguishable from a guard.
+    assertTrue(dirsScanned > 0, "no Juliet directory was found under " + JULIET_ROOT);
+    assertTrue(totalFiles > 0, "the Juliet corpus was walked but no file was scanned");
+    assertTrue(
+        totalFires > 0, "the engine ran over " + totalFiles + " files and reported nothing at all");
+    assertTrue(
+        parseFailures * 2 < totalFiles,
+        "the IR translation failed for "
+            + parseFailures
+            + " of "
+            + totalFiles
+            + " files -- more than half the corpus never reached the engine"
+            + (firstFailure == null ? "" : "; first failure: " + firstFailure));
   }
 
   private static String extractCweNumber(String dirName) {
