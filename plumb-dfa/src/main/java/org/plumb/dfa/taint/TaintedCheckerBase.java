@@ -264,11 +264,60 @@ public abstract class TaintedCheckerBase implements DfaChecker {
 
   /**
    * The set of variables known to carry taint in the current function, keyed by the variable
-   * itself. The value is a human-readable label for the source (e.g. {@code "param:id"} or the
-   * concrete {@code Fact.value} from the caller's fact bag). Cleared at every function boundary by
+   * itself. The value is the taint FACT -- a {@link TaintFact}, which carries the label a finding
+   * names (e.g. {@code "param:id"} or the concrete {@code Fact.value} from the caller's fact bag)
+   * together with the KIND of value the tainted thing is. Cleared at every function boundary by
    * {@link #initFunction}.
+   *
+   * <p>The fact is one value rather than two maps on purpose: a label and its kind are two
+   * properties of one fact, and a finding names the label and is judged against the kind.
    */
-  protected final Map<TacOperand.TacVar, String> taintedVars = new LinkedHashMap<>();
+  protected final Map<TacOperand.TacVar, TaintFact> taintedVars = new LinkedHashMap<>();
+
+  /**
+   * The label a variable carries, or {@code null} when it is not tainted.
+   *
+   * <p>Most readers want the label, not the whole fact: the label is what a finding names. This is
+   * the one way to read it, so a reader cannot accidentally use the fact's string form where the
+   * label was meant.
+   *
+   * @param v the variable to look up
+   * @return the label, or {@code null}
+   */
+  protected String labelOf(TacOperand.TacVar v) {
+    TaintFact fact = taintedVars.get(v);
+    return fact == null ? null : fact.label();
+  }
+
+  /**
+   * The label an operand carries, or {@code null} when it is not a variable or is not tainted.
+   *
+   * <p>An operand that is not a variable -- a constant, for instance -- carries no taint, and the
+   * lookup says so instead of failing.
+   *
+   * @param op the operand to look up
+   * @return the label, or {@code null}
+   */
+  protected String labelOf(TacOperand op) {
+    return (op instanceof TacOperand.TacVar v) ? labelOf(v) : null;
+  }
+
+  /**
+   * A taint fact for a variable, with the kind derived from that variable's type.
+   *
+   * <p>The kind of a value is what the DESTINATION variable's type says it is, so deriving it here
+   * means no propagation chain has to be kept in step: a value that flows into a variable of
+   * another kind changes kind on the way, and the fact says so for free. When the type is unknown
+   * the kind is {@link TaintDomain.MixedTaint}, which flows into every sink -- an unknown kind
+   * never suppresses a finding.
+   *
+   * @param v the variable the fact is attached to; may be {@code null}
+   * @param label the label the fact carries
+   * @return the fact
+   */
+  protected static TaintFact factFor(TacOperand.TacVar v, String label) {
+    return TaintFact.of(label, TaintDomain.of(v == null ? null : v.type()));
+  }
 
   /**
    * How many interprocedural hops each taint LABEL took to reach the current function.
@@ -644,7 +693,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * @return the source label, or {@code null} if {@code var} is not tainted
    */
   protected String taintSourceLabelFor(TacOperand.TacVar var) {
-    return taintedVars.get(var);
+    return labelOf(var);
   }
 
   /**
@@ -1060,7 +1109,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    */
   protected void markSource(
       TacOperand.TacVar v, String label, TacInstruction ins, String fnSig, String expr) {
-    taintedVars.put(v, label);
+    taintedVars.put(v, factFor(v, label));
     int line = ins == null ? -1 : ins.line;
     int col = ins == null ? -1 : ins.column;
     String sig = fnSig == null ? "" : fnSig;
@@ -1251,7 +1300,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    */
   private void markCarrier(TacOperand.TacVar v, TacFunction fn) {
     String label = "param:" + v.name() + "@carrier";
-    taintedVars.put(v, label);
+    taintedVars.put(v, factFor(v, label));
     taintPaths.put(v, java.util.List.of(new FlowStep("carrier", "", 1, 1, fn.signature(), label)));
     int handle =
         v2Builder.addSource(
@@ -1674,7 +1723,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (fn == null) return;
     if (!(ins.dest instanceof TacOperand.TacVar dest)) return;
     if (!(ins.lhs1 instanceof TacOperand.TacVar source)) return;
-    String label = taintedVars.get(source);
+    String label = labelOf(source);
     if (label == null) return;
     List<TacOperand.TacVar> params = fn.params();
     for (int i = 0; i < params.size(); i++) {
@@ -1683,7 +1732,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // so that it is the same entry the summary looks at. It says whether the written taint
         // came from the formal itself (a `ref` parameter) or from somewhere else (an `out`
         // parameter the callee filled with a value of its own).
-        String before = taintedVars.get(params.get(i));
+        String before = labelOf(params.get(i));
         paramWrites.add(new ParamWrite(i, label, before));
         return;
       }
@@ -1740,7 +1789,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     TacCfg cfg = TacCfgBuilder.build(fn);
     String throwTaint = lookupThrowTaintForCatch(cfg, ins, fn);
     if (throwTaint != null) {
-      taintedVars.put(catchParam, throwTaint);
+      taintedVars.put(catchParam, factFor(catchParam, throwTaint));
     } else {
       taintedVars.remove(catchParam);
     }
@@ -1834,7 +1883,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    */
   private void handleThrow(TacInstruction ins) {
     if (!(ins.lhs1 instanceof TacOperand.TacVar thrown)) return;
-    String t = taintedVars.get(thrown);
+    String t = labelOf(thrown);
     // We don't have the parent fn here, so
     // the catch handler looks up the throw
     // by walking the function's instructions
@@ -2248,7 +2297,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       arrayTaintTracker.alias(arraySrc, dv);
     }
     if (ins.lhs1 instanceof TacOperand.TacVar sv && taintedVars.containsKey(sv)) {
-      taintedVars.put(dv, taintedVars.get(sv));
+      taintedVars.put(dv, factFor(dv, labelOf(sv)));
       List<FlowStep> srcPath = taintPaths.get(sv);
       List<FlowStep> newPath = new ArrayList<>();
       if (srcPath != null) newPath.addAll(srcPath);
@@ -2317,7 +2366,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // join, BINOP `"/foo" + data` saw data as clean
       // and the bad-sink at the join point silently
       // dropped. (Lesson 1050.)
-      String priorLabel = taintedVars.get(dv);
+      String priorLabel = labelOf(dv);
       // an allowlist proof outranks the entry-boundary label.
       //
       // The branch below deliberately keeps a `param:` label across a reassignment, because the
@@ -2444,12 +2493,12 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // MOVE merge. A literal-null MOVE that
     // landed just after the NEW would otherwise
     // clobber the taint we just seeded.
-    String prev = taintedVars.get(dv);
+    String prev = labelOf(dv);
     if (prev != null && (prev.startsWith("param:") || prev.startsWith("input:"))) {
       return;
     }
-    String label = taintedVars.get(src);
-    taintedVars.put(dv, label);
+    String label = labelOf(src);
+    taintedVars.put(dv, factFor(dv, label));
     List<FlowStep> srcPath = taintPaths.get(src);
     List<FlowStep> newPath = new ArrayList<>();
     if (srcPath != null) newPath.addAll(srcPath);
@@ -2500,16 +2549,16 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     }
     String l1Label =
         (ins.lhs1 instanceof TacOperand.TacVar lv && taintedVars.containsKey(lv))
-            ? taintedVars.get(lv)
+            ? labelOf(lv)
             : null;
     String l2Label =
         (ins.lhs2 instanceof TacOperand.TacVar rv && taintedVars.containsKey(rv))
-            ? taintedVars.get(rv)
+            ? labelOf(rv)
             : null;
     List<FlowStep> l1Path = (ins.lhs1 instanceof TacOperand.TacVar lv) ? taintPaths.get(lv) : null;
     List<FlowStep> l2Path = (ins.lhs2 instanceof TacOperand.TacVar rv) ? taintPaths.get(rv) : null;
     if (l1Label != null && l2Label != null) {
-      taintedVars.put(dv, l1Label + "+" + l2Label);
+      taintedVars.put(dv, factFor(dv, l1Label + "+" + l2Label));
       // The combined label is provable by whichever side is nearer, so it takes the shallower
       // of the two depths.
       recordLabelDepth(
@@ -2545,7 +2594,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         v2TraceHandle.put(dv, handle);
       }
     } else if (l1Label != null) {
-      taintedVars.put(dv, l1Label);
+      taintedVars.put(dv, factFor(dv, l1Label));
       List<FlowStep> newPath = new ArrayList<>();
       if (l1Path != null) newPath.addAll(l1Path);
       newPath.add(
@@ -2569,7 +2618,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         v2TraceHandle.put(dv, handle);
       }
     } else if (l2Label != null) {
-      taintedVars.put(dv, l2Label);
+      taintedVars.put(dv, factFor(dv, l2Label));
       List<FlowStep> newPath = new ArrayList<>();
       if (l2Path != null) newPath.addAll(l2Path);
       newPath.add(
@@ -2922,7 +2971,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     java.util.List<FlowStep> path = new java.util.ArrayList<>();
     for (TacOperand s : sources) {
       if (label.length() > 0) label.append('+');
-      label.append(taintedVars.get((TacOperand.TacVar) s));
+      label.append(labelOf((TacOperand.TacVar) s));
       java.util.List<FlowStep> p = taintPaths.get((TacOperand.TacVar) s);
       if (p != null) path.addAll(p);
     }
@@ -2934,7 +2983,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             ins.column,
             calleeSig,
             calleeSig + " passthrough -> " + dv.name()));
-    taintedVars.put(dv, label.toString());
+    taintedVars.put(dv, factFor(dv, label.toString()));
     taintPaths.put(dv, java.util.Collections.unmodifiableList(path));
     // dual-write v2 SUMMARY_FOLD node
     // (op=SUMMARY_PASS_THROUGH) for the
@@ -3065,9 +3114,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
           // earlier append); in that case the existing label stays and the
           // new source is recorded as an additional path step, so the
           // reported origin keeps both contributions.
-          String existing = taintedVars.get(recv);
+          String existing = labelOf(recv);
           if (existing == null) {
-            taintedVars.put(recv, label);
+            taintedVars.put(recv, factFor(recv, label));
             List<FlowStep> path = new ArrayList<>();
             List<FlowStep> srcPath = carried.path();
             if (srcPath != null) path.addAll(srcPath);
@@ -3081,7 +3130,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
                     calleeSig + " accumulates into " + recv.name()));
             taintPaths.put(recv, java.util.Collections.unmodifiableList(path));
           } else if (!existing.equals(label)) {
-            taintedVars.put(recv, existing + "+" + label);
+            taintedVars.put(recv, factFor(recv, existing + "+" + label));
             recordLabelDepth(
                 existing + "+" + label, Math.min(depthOfLabel(existing), depthOfLabel(label)));
           }
@@ -3104,9 +3153,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       if (taintedVars.containsKey(dv)) return;
       TacOperand receiver = ins.args.get(0);
       if (!(receiver instanceof TacOperand.TacVar recv)) return;
-      String label = taintedVars.get(recv);
+      String label = labelOf(recv);
       if (label == null) return;
-      taintedVars.put(dv, label);
+      taintedVars.put(dv, factFor(dv, label));
       List<FlowStep> path = new ArrayList<>();
       List<FlowStep> recvPath = taintPaths.get(recv);
       if (recvPath != null) path.addAll(recvPath);
@@ -3203,7 +3252,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       if (!(ins.args.get(0) instanceof TacOperand.TacVar recv)) return;
       ArrayTaintTracker.TaintedEntry entry = iteratorTaint.get(recv);
       if (entry == null) return;
-      taintedVars.put(dv, entry.label());
+      taintedVars.put(dv, factFor(dv, entry.label()));
       List<FlowStep> path = new ArrayList<>();
       if (entry.path() != null) path.addAll(entry.path());
       path.add(
@@ -3372,7 +3421,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (usesKeyedContainers(ctx)) {
       ArrayTaintTracker.TaintedEntry stored = keyedElementTaintOf(fn, source, ctx);
       if (stored != null) return stored;
-      String containerLabel = taintedVars.get(source);
+      String containerLabel = labelOf(source);
       if (containerLabel != null) {
         return new ArrayTaintTracker.TaintedEntry(containerLabel, taintPaths.get(source), -1);
       }
@@ -3397,7 +3446,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // entries of a namespace has always had this answer (the branch above),
     // which is why the same program in TypeScript reported and the same program
     // in C# did not.
-    String containerLabel = taintedVars.get(source);
+    String containerLabel = labelOf(source);
     if (containerLabel != null) {
       return new ArrayTaintTracker.TaintedEntry(containerLabel, taintPaths.get(source), -1);
     }
@@ -3661,7 +3710,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     TacOperand arg = ins.args.get(argIdx);
     if (!(arg instanceof TacOperand.TacVar av)) return;
     if (!taintedVars.containsKey(av)) return;
-    String label = taintedVars.get(av);
+    String label = labelOf(av);
     if (label == null || !label.startsWith("param:")) return;
     // Resolve "param:<name>" to the
     // matching parameter index. The label
@@ -3847,7 +3896,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // taint state so subsequent
       // FIELDLOADs in the SAME
       // function can restore it.
-      String label = taintedVars.get(valueVar);
+      String label = labelOf(valueVar);
       if (label == null) {
         return;
       }
@@ -3919,7 +3968,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     String fldLabel = null;
     List<FlowStep> fldPath = null;
     if (taintedVars.containsKey(valueVar)) {
-      fldLabel = taintedVars.get(valueVar);
+      fldLabel = labelOf(valueVar);
       fldPath = taintPaths.get(valueVar);
       // follow-up: pass the v2 handle of the
       // source we're recording so a subsequent
@@ -4413,7 +4462,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // reached through the same name share one slot.
     AccessPathTaintStore.Entry located = readAccessPathField(ins, fn, recv, ctx);
     if (located != null) {
-      taintedVars.put(dv, located.label());
+      taintedVars.put(dv, factFor(dv, located.label()));
       if (!located.path().isEmpty()) {
         taintPaths.put(dv, located.path());
       }
@@ -4459,7 +4508,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         }
       }
       if (foundLabel != null) {
-        taintedVars.put(dv, foundLabel);
+        taintedVars.put(dv, factFor(dv, foundLabel));
         String sourceFn = foundSource == null ? null : foundSource.functionSig();
         String kind = foundSource == null ? "?" : foundSource.kind();
         String stepKind =
@@ -4508,7 +4557,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // Restore taint: copy the tracked
     // path, append a "field-load" step
     // recording this load site.
-    taintedVars.put(dv, tracked.label());
+    taintedVars.put(dv, factFor(dv, tracked.label()));
     List<FlowStep> newPath = new ArrayList<>();
     newPath.addAll(tracked.path());
     newPath.add(
@@ -4630,7 +4679,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     String valueLabel = null;
     List<FlowStep> valuePath = null;
     if (ins.dest instanceof TacOperand.TacVar dv && taintedVars.containsKey(dv)) {
-      valueLabel = taintedVars.get(dv);
+      valueLabel = labelOf(dv);
       valuePath = taintPaths.get(dv);
     }
     // Is the index (ins.lhs2) currently tainted?
@@ -4722,7 +4771,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
                     : (ins.lhs2 instanceof TacOperand.TacVar tv ? tv.name() : ins.lhs2.toString()))
                 + "] -> "
                 + dv.name()));
-    taintedVars.put(dv, tracked.label());
+    taintedVars.put(dv, factFor(dv, tracked.label()));
     taintPaths.put(dv, java.util.Collections.unmodifiableList(newPath));
     // follow-up: dual-write v2 ARRAYLOAD
     // node. If the writer recorded a v2 handle
@@ -4833,7 +4882,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     String valueLabel = null;
     List<FlowStep> valuePath = null;
     if (ins.dest instanceof TacOperand.TacVar dv && taintedVars.containsKey(dv)) {
-      valueLabel = taintedVars.get(dv);
+      valueLabel = labelOf(dv);
       valuePath = taintPaths.get(dv);
     }
     if (valueLabel == null) return;
@@ -5023,6 +5072,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (isIncompatibleWithExpectedType(family, fn, ctx, av)) {
       return;
     }
+    // The same domain gate the CALL path applies: a constructor's argument is a value of the
+    // same kind, so a tainted number reaching a string sink is the same non-match.
+    if (isDomainMismatch(av)) {
+      return;
+    }
     // The same reachability question the CALL path asks, asked here too: a constructor is a
     // sink like any other call, and a source whose guards contradict each other does not
     // reach it either.
@@ -5046,8 +5100,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             "sink", "", ins.line, ins.column, calleeSig, calleeSig + " (" + family.name() + ")"));
     String msg = findingMessage(ins, family, arg);
     // same caller-origin preference as the CALL sink path (see resolveUpstreamOrigin).
-    String ctorOrigin = resolveUpstreamOrigin(taintedVars.get(av), fn, ctx);
-    String ctorSourceLabel = ctorOrigin != null ? ctorOrigin : taintedVars.get(av);
+    String ctorOrigin = resolveUpstreamOrigin(labelOf(av), fn, ctx);
+    String ctorSourceLabel = ctorOrigin != null ? ctorOrigin : labelOf(av);
     Finding finding =
         Finding.dfa(
             rule.ruleId(),
@@ -5158,6 +5212,40 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       return null;
     }
     return TypeCompatibility.expectedType(family.expectsType());
+  }
+
+  /**
+   * Whether the tainted value's KIND rules out this rule.
+   *
+   * <p>The taint fact carries the kind of the value (a string, a number) and the rule declares the
+   * kind it consumes. Comparing the two is a real question: a tainted NUMBER that reaches a SQL
+   * sink is not SQL injection.
+   *
+   * <p>Two rules of the gate keep it on the conservative side, so that it can only ever remove a
+   * finding the engine can PROVE is wrong:
+   *
+   * <ul>
+   *   <li>Only a rule that consumes the kind of the VALUE is asked at all. A rule that consumes a
+   *       handle is asking whether the RECEIVER is null or already closed, and the kind of the
+   *       value the handle carries says nothing about that.
+   *   <li>An unknown kind never suppresses. A value whose type was not known carries {@link
+   *       TaintDomain.MixedTaint}, which flows into every sink.
+   * </ul>
+   *
+   * @param value the tainted value reaching the sink
+   * @return true when the value's kind provably cannot reach this rule
+   */
+  private boolean isDomainMismatch(TacOperand.TacVar value) {
+    TaintDomain ruleDomain = rule.domain();
+    if (ruleDomain == null || !ruleDomain.asksAboutValueKind()) {
+      return false;
+    }
+    TaintFact fact = taintedVars.get(value);
+    if (fact == null) {
+      return false;
+    }
+    TaintDomain valueDomain = fact.domain();
+    return valueDomain != null && !valueDomain.flowsInto(ruleDomain);
   }
 
   /**
@@ -5326,7 +5414,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // qualifier after the name ("param:customer@spring-mvc:RequestParam"), and the
       // suppression must still apply to it. The suppression proves the VALUE is clean at
       // every call site; that proof does not depend on how the source is named.
-      String avLabel = taintedVars.get(av);
+      String avLabel = labelOf(av);
       String avParamName = FrameworkEntryPoints.paramNameOf(avLabel);
       if (r1109ParamIdx >= 0
           && ctx.isParamAlwaysClean(fn.signature(), r1109ParamIdx)
@@ -5340,18 +5428,23 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         return;
       }
     }
-    // Domain check: a MixedTaint flows anywhere;
-    // a specific domain only flows into a
-    // compatible sink.
-    if (!rule.domain().flowsInto(rule.domain())) {
-      // Same-domain check is a no-op; the real
-      // signal is whether the SOURCE carried a
-      // matching domain. Without a domain
-      // lattice at the fact level, we treat the
-      // rule's domain as the desired one and
-      // skip the cross-domain mismatch : Mixed
-      // domain rules like deserialization
-      // accept any input.
+    // Domain check: the fact says what KIND of value the tainted thing is, and the rule says
+    // what KIND it consumes. A tainted NUMBER that reaches a SQL sink is not SQL injection, and
+    // the engine can prove it.
+    //
+    // This used to compare the rule's domain with ITSELF, which could not fail: the fact did
+    // not carry a domain, so there was nothing to compare against. Now the fact carries one.
+    //
+    // The gate is asked only when the rule consumes the kind of the VALUE. A rule that consumes
+    // a handle is asking about the receiver, not about what the handle carries, so it never
+    // loses a finding to this. And an unknown kind never suppresses: a value whose type was
+    // not known carries MixedTaint, which flows into every sink.
+    if (isDomainMismatch(av)) {
+      LOG.debug(
+          "suppressing sink finding -- a tainted {} value cannot reach a {} sink",
+          taintedVars.get(av).domain().label(),
+          rule.domain().label());
+      return;
     }
     // Path-condition verification.
     // If a solver bridge is configured and
@@ -5410,8 +5503,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // prefer the caller's real taint origin over this function's own entry-boundary
     // `param:<name>` label, so a finding inside a sink method names where the value actually
     // came from. See resolveUpstreamOrigin for why this can only be resolved here.
-    String origin = resolveUpstreamOrigin(taintedVars.get(av), fn, ctx);
-    String sourceLabel = origin != null ? origin : taintedVars.get(av);
+    String origin = resolveUpstreamOrigin(labelOf(av), fn, ctx);
+    String sourceLabel = origin != null ? origin : labelOf(av);
     Finding finding =
         Finding.dfa(
             rule.ruleId(),
@@ -6163,8 +6256,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
           && ins.args.get(0) instanceof TacOperand.TacVar rcv
           && taintedVars.containsKey(rcv)
           && ctx.config().isReceiverPassthroughEligible(calleeSig, ctx.language())) {
-        String rcvLabel = taintedVars.get(rcv);
-        taintedVars.put(rcvDest, "rcv-passthrough:" + rcvLabel);
+        String rcvLabel = labelOf(rcv);
+        taintedVars.put(rcvDest, factFor(rcvDest, "rcv-passthrough:" + rcvLabel));
         List<FlowStep> rcvFold = new java.util.ArrayList<>();
         List<FlowStep> rcvSrcPath = taintPaths.get(rcv);
         if (rcvSrcPath != null) rcvFold.addAll(rcvSrcPath);
@@ -6227,7 +6320,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         for (Integer position : argPositions) {
           if (position == null || position < 0 || position >= ins.args.size()) continue;
           if (!(ins.args.get(position) instanceof TacOperand.TacVar av)) continue;
-          String argLabel = taintedVars.get(av);
+          String argLabel = labelOf(av);
           List<FlowStep> argSrcPath = taintPaths.get(av);
           int argHandle = v2TraceHandle.getOrDefault(av, -1);
           String inheritedBy = "argument";
@@ -6249,7 +6342,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             argHandle = carried.v2Handle();
             inheritedBy = "argument element";
           }
-          taintedVars.put(argDest, "arg-passthrough:" + argLabel);
+          taintedVars.put(argDest, factFor(argDest, "arg-passthrough:" + argLabel));
           List<FlowStep> argFold = new java.util.ArrayList<>();
           if (argSrcPath != null) argFold.addAll(argSrcPath);
           argFold.add(
@@ -6320,7 +6413,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // crossed the call boundary". When the origin is null (the callee entered
         // the value as a genuinely fresh source) we keep the old label.
         String origin = taintOriginOf(taintOp.origin());
-        taintedVars.put(av, origin != null ? origin : "callee:" + calleeSig);
+        taintedVars.put(av, factFor(av, origin != null ? origin : "callee:" + calleeSig));
         // Cross-function summary fold:
         // the caller's arg inherits taint from
         // the callee's summary. Record a
@@ -6393,7 +6486,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // (e.g. "callee.toLowerCase().trim()").
         String enrichedLabel =
             enrichTaintLabelWithPassthroughs("callee-ret:" + calleeSig, calleeSummary);
-        taintedVars.put(destVar, enrichedLabel);
+        taintedVars.put(destVar, factFor(destVar, enrichedLabel));
         // The taint crossed one more call edge on its way here, so it is now one hop deeper.
         recordLabelDepth(enrichedLabel, calleeCost);
         // Summary-fold for the
@@ -6458,7 +6551,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       if (!resTainted) continue;
       String resLabel =
           enrichTaintLabelWithPassthroughs("callee-ret:" + calleeSig + "#r" + slot, calleeSummary);
-      taintedVars.put(resVar, resLabel);
+      taintedVars.put(resVar, factFor(resVar, resLabel));
       recordLabelDepth(resLabel, calleeCost);
       List<FlowStep> fold = new ArrayList<>();
       fold.add(
@@ -6529,7 +6622,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
             if (!(ins.args.get(causeArgIdx) instanceof TacOperand.TacVar causeVar)) {
               continue;
             }
-            String causeLabel = taintedVars.get(causeVar);
+            String causeLabel = labelOf(causeVar);
             if (causeLabel != null) {
               outLabel = causeLabel;
               break;
@@ -6550,7 +6643,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         if (outLabel == null) {
           continue;
         }
-        taintedVars.put(outVar, outLabel);
+        taintedVars.put(outVar, factFor(outVar, outLabel));
         recordLabelDepth(outLabel, calleeCost);
         List<FlowStep> fold = new ArrayList<>();
         fold.add(
@@ -6630,7 +6723,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       for (int i = 0; i < ins.args.size(); i++) {
         TacOperand arg = ins.args.get(i);
         if (!(arg instanceof TacOperand.TacVar av)) continue;
-        String argLabel = taintedVars.get(av);
+        String argLabel = labelOf(av);
         // If the arg is not
         // directly tainted, check
         // the per-function field
@@ -6745,7 +6838,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // passthrough rather
         // than a directly modelled
         // TaintPropagate.
-        taintedVars.put(r40Dest, "r40-passthrough:" + argLabel);
+        taintedVars.put(r40Dest, factFor(r40Dest, "r40-passthrough:" + argLabel));
         List<FlowStep> r40Fold = new ArrayList<>();
         r40Fold.add(
             new FlowStep(
@@ -7019,7 +7112,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (fop.fieldName() == null || fop.fieldName().isEmpty()) return;
     if (callArgIndex < 0 || callArgIndex >= ins.args.size()) return;
     if (!(ins.args.get(callArgIndex) instanceof TacOperand.TacVar arg)) return;
-    String label = taintedVars.get(arg);
+    String label = labelOf(arg);
     if (label == null) return;
     org.plumb.dfa.points.PointsToSolver solver = ctx.pointsToSolver();
     if (solver == null) return;
@@ -7259,9 +7352,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         b.recordParamOp(
             i,
             new Operation.TaintPropagate(
-                "param:" + p.name() + " in " + fn.signature(),
-                1.0,
-                taintOriginOf(taintedVars.get(p))));
+                "param:" + p.name() + " in " + fn.signature(), 1.0, taintOriginOf(labelOf(p))));
       }
     }
     // 1b. : For each tainted passed-out
@@ -7292,7 +7383,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         continue;
       }
       int slot = po.resultIndex();
-      String retLabel = taintedVars.get(ret);
+      String retLabel = labelOf(ret);
       // Which formal does this return taint flow THROUGH? The return value
       // is usually the parameter itself, or something derived from it, and
       // the parameter's taint label is the same label the returned value
@@ -7304,7 +7395,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       if (retLabel != null) {
         for (int i = 0; i < params.size(); i++) {
           TacOperand.TacVar p = params.get(i);
-          String paramLabel = taintedVars.get(p);
+          String paramLabel = labelOf(p);
           if (paramLabel != null && paramLabel.equals(retLabel)) {
             cause = i;
             break;
@@ -7374,7 +7465,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         if (i == target) {
           continue;
         }
-        String paramLabel = taintedVars.get(params.get(i));
+        String paramLabel = labelOf(params.get(i));
         if (paramLabel != null && paramLabel.equals(writtenLabel)) {
           cause = i;
           break;
@@ -7698,7 +7789,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * {@code "callee-ret:H#m[toLowerCase,trim]"}).
    */
   public String taintedLabelFor(TacOperand.TacVar v) {
-    return taintedVars.get(v);
+    return labelOf(v);
   }
 
   /**

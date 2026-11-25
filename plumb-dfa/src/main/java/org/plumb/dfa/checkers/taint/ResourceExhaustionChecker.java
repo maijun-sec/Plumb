@@ -166,7 +166,7 @@ public final class ResourceExhaustionChecker extends TaintedCheckerBase {
         for (TacOperand arg : ins.args) {
           if (!(arg instanceof TacOperand.TacVar av)) continue;
           if (!taintedVars.containsKey(av)) continue;
-          String srcLabel = taintedVars.get(av);
+          String srcLabel = labelOf(av);
           String key = fn.enclosingClass() + "#" + fn.signature() + "|" + ins.line + "|400-sleep";
           if (!reported.add(key)) return;
           // wire this Thread.sleep
@@ -254,9 +254,9 @@ public final class ResourceExhaustionChecker extends TaintedCheckerBase {
       }
       String label = null;
       if (binop.lhs1 instanceof TacOperand.TacVar l && taintedVars.containsKey(l)) {
-        label = taintedVars.get(l);
+        label = labelOf(l);
       } else if (binop.lhs2 instanceof TacOperand.TacVar r && taintedVars.containsKey(r)) {
-        label = taintedVars.get(r);
+        label = labelOf(r);
       }
       if (label == null) return;
       String key = fn.enclosingClass() + "#" + fn.signature() + "|" + ins.line + "|400-for";

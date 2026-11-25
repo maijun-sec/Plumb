@@ -127,7 +127,7 @@ public final class ArrayIndexChecker extends TaintedCheckerBase {
           || this.guards.isGuardedByIncludingDerived(size, BinaryOperator.GT)) {
         return;
       }
-      String src = (String) this.taintedVars.get(size);
+      String src = this.labelOf(size);
       String msg = "Array allocation with tainted size: new T[" + size.name() + "]";
       String newArrayFlow = "unchecked-newarray: " + src;
       // Emit a single "violation" FlowStep. The taint
@@ -172,7 +172,7 @@ public final class ArrayIndexChecker extends TaintedCheckerBase {
     if (this.guards.isIndexProvenInRange(index, array)) {
       return;
     }
-    String src = (String) this.taintedVars.get(index);
+    String src = this.labelOf(index);
     String msg =
         (ins.kind == TacInstruction.Kind.ARRAYLOAD
                 ? "Array index out of bounds: load at index "

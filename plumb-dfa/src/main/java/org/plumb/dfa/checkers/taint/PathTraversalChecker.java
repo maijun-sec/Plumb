@@ -86,7 +86,7 @@ public final class PathTraversalChecker extends TaintedCheckerBase {
             TacOperand.TacVar av;
             if (!(arg instanceof TacOperand.TacVar)
                 || !this.taintedVars.containsKey(av = (TacOperand.TacVar) arg)) continue;
-            this.taintedVars.put(d, "new(" + callee + "):" + (String) this.taintedVars.get(av));
+            this.taintedVars.put(d, factFor(d, "new(" + callee + "):" + this.labelOf(av)));
             break;
           }
         }
@@ -128,7 +128,7 @@ public final class PathTraversalChecker extends TaintedCheckerBase {
                   "",
                   ins.line,
                   ins.column,
-                  "taint: " + (String) this.taintedVars.get(av) + " -> " + callee));
+                  "taint: " + this.labelOf(av) + " -> " + callee));
     }
   }
 }

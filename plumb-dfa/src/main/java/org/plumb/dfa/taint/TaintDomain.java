@@ -22,6 +22,7 @@
 package org.plumb.dfa.taint;
 
 import java.util.Objects;
+import org.plumb.tac.ir.TacType;
 
 /**
  * Taint value domain.
@@ -162,7 +163,7 @@ public sealed interface TaintDomain
   }
 
   /**
-   * Whether this domain can flow into a sink expecting {@code expected}. The match is inclusive: a
+   * Whether a domain can flow into a sink expecting {@code expected}. The match is inclusive: a
    * {@link MixedTaint} can flow anywhere; a {@link StringTaint} can flow into a StringTaint sink,
    * but not into a NumericTaint sink (caller decides whether to be conservative).
    */
@@ -171,5 +172,72 @@ public sealed interface TaintDomain
     if (this.equals(MixedTaint.INSTANCE)) return true;
     if (expected.equals(MixedTaint.INSTANCE)) return true;
     return this.equals(expected);
+  }
+
+  /**
+   * Whether a rule that consumes THIS domain asks about the KIND of the tainted value.
+   *
+   * <p>A rule that consumes a {@link StringTaint} or a {@link NumericTaint} is asking "is this
+   * value a string / a number" -- the tainted thing IS the value that reaches the sink. So the
+   * fact's kind is the answer, and a mismatch is a provable non-match.
+   *
+   * <p>A rule that consumes a {@link PointerTaint} is asking something else: whether the RECEIVER
+   * is null, or already closed. The tainted thing there is a handle, and the kind of the value the
+   * handle carries says nothing about whether the handle is usable. A rule that consumes a {@link
+   * MixedTaint} does not discriminate at all.
+   *
+   * <p>⇒ So the fact's kind is consulted only against a value-domain rule. That is the conservative
+   * direction: a rule that does not ask about the kind never loses a finding to it.
+   *
+   * @return true when this domain makes the fact's kind relevant
+   */
+  default boolean asksAboutValueKind() {
+    return this.equals(StringTaint.INSTANCE) || this.equals(NumericTaint.INSTANCE);
+  }
+
+  /**
+   * The kind of value a type denotes.
+   *
+   * <p>This is the one place that decides it, because the answer is a property of the TYPE and
+   * every writer of a fact needs the same answer.
+   *
+   * <p>The mapping is deliberately coarse and deliberately one-sided:
+   *
+   * <ul>
+   *   <li>{@link TacType.Kind#STRING} and a class reference to {@code java.lang.String} are {@link
+   *       StringTaint}.
+   *   <li>The integral and floating kinds are {@link NumericTaint}.
+   *   <li>Everything else -- every other class reference, every array, {@code char}, {@code
+   *       boolean}, {@code null}, {@code void}, and an unknown type -- is {@link MixedTaint}, which
+   *       flows into every sink.
+   * </ul>
+   *
+   * <p>Two of those deserve their reason. A class reference other than {@code String} could be a
+   * string under another name, or a handle, or neither, so the engine does not guess. And {@code
+   * char} is neither: it is not a number and it is not a string, so treating it as either would be
+   * a claim the type does not support.
+   *
+   * @param type the type of the variable the tainted value sits in; {@code null} for "no type"
+   * @return the kind of value that type denotes
+   */
+  static TaintDomain of(TacType type) {
+    if (type == null) return MixedTaint.INSTANCE;
+    TacType.Kind kind = type.kind();
+    if (kind == null) return MixedTaint.INSTANCE;
+    switch (kind) {
+      case STRING -> {
+        return StringTaint.INSTANCE;
+      }
+      case INT, LONG, SHORT, BYTE, FLOAT, DOUBLE, DECIMAL -> {
+        return NumericTaint.INSTANCE;
+      }
+      case CLASS -> {
+        String fqn = type.className();
+        return "java.lang.String".equals(fqn) ? StringTaint.INSTANCE : MixedTaint.INSTANCE;
+      }
+      default -> {
+        return MixedTaint.INSTANCE;
+      }
+    }
   }
 }

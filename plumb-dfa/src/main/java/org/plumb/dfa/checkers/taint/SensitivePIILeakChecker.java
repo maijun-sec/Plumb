@@ -89,7 +89,7 @@ public final class SensitivePIILeakChecker extends TaintedCheckerBase {
         // PII source patterns, so without this line the value would never be
         // tainted and the rule would report nothing. It is a deliberate
         // re-tagging, not a duplicate of the base class's write.
-        this.taintedVars.put(d, "pii:" + callee);
+        this.taintedVars.put(d, factFor(d, "pii:" + callee));
       }
     }
   }

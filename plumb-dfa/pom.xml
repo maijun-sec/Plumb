@@ -511,6 +511,21 @@
                              can. -->
                         <include>org/plumb/dfa/checkers/taint/SourceMarkingLabelConsistencyTest.java</include>
 
+                        <!-- The DOMAIN gate. Every taint rule declares the kind of
+                             value it consumes, and the engine had a domain
+                             lattice for it -- but the comparison at the sink was
+                             the rule's domain against ITSELF, so it could not
+                             fail: a tainted NUMBER was reported as SQL
+                             injection and a tainted STRING as an uncontrolled
+                             allocation. The taint fact now carries the kind,
+                             derived from the destination variable's type, and
+                             the comparison is real. The cases are built on
+                             two families that declare NO expected type, so the
+                             separate TYPE gate cannot fire on them: a finding
+                             that disappears there was removed by the domain
+                             gate alone. -->
+                        <include>org/plumb/dfa/checkers/taint/TaintDomainGateTest.java</include>
+
                         <!-- Sink matching has to tolerate the SIMPLE-NAME callee
                              form. The TAC writes a fully qualified receiver type
                              only when the symbol solver can resolve it; for a

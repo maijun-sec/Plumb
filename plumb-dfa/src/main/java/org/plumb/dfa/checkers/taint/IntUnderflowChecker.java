@@ -139,7 +139,7 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
       }
       String operandLabel = this.isRealHazard(ins.lhs1);
       if (operandLabel != null) {
-        this.taintedVars.put(destVar, "underflow:" + String.valueOf(ins.unop));
+        this.taintedVars.put(destVar, factFor(destVar, "underflow:" + String.valueOf(ins.unop)));
       }
       if (operandLabel == null) {
         return;
@@ -202,7 +202,7 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
     boolean lhs1Hazard = lhs1Label != null;
     boolean bl = lhs2Hazard = lhs2Label != null;
     if (lhs1Hazard || lhs2Hazard) {
-      this.taintedVars.put(destVar, "underflow:" + String.valueOf(op));
+      this.taintedVars.put(destVar, factFor(destVar, "underflow:" + String.valueOf(op)));
     }
     if (lhs1Hazard || lhs2Hazard) {
       if (IntUnderflowChecker.isStringConcat(ins.lhs1, ins.lhs2, destVar)) {
@@ -339,7 +339,7 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
       return null;
     }
     TacOperand.TacVar v = (TacOperand.TacVar) operand;
-    String label = (String) this.taintedVars.get(v);
+    String label = this.labelOf(v);
     if (label == null) {
       return null;
     }

@@ -76,12 +76,37 @@ import org.plumb.tac.ir.TacType;
  *   <li>a value whose type NOTHING knows still reaches it -- an unknown type proves nothing, and a
  *       gate that fired on an unknown type would throw away findings the analysis had no reason to
  *       doubt;
- *   <li>a family that declares NO type is not affected at all -- the gate is the catalogue's
- *       decision, not a rule the engine applies on its own.
+ *   <li>a family that declares NO type is still protected -- but by the OTHER gate, the one whose
+ *       authority is the RULE rather than the catalogue.
  * </ol>
  *
  * <p>The first three programs differ in ONE line, so a failure says which line the gate read. The
  * fourth uses a different family on purpose: it is the control for the whole mechanism.
+ *
+ * <h2>Two gates, two authorities</h2>
+ *
+ * <p>The engine suppresses a finding when the value's kind is incompatible with what the sink
+ * consumes. There are two ways it knows that, and they answer DIFFERENT questions and have
+ * DIFFERENT authorities:
+ *
+ * <ul>
+ *   <li>the <b>TYPE</b> gate reads the CATALOGUE: a family that declares {@code expects_type} says
+ *       what type its argument must have, and the finding goes when the value is provably not that
+ *       type. The catalogue is the only authority here -- a family that declares nothing is never
+ *       asked, because the engine will not substitute its own guess for a decision the catalogue
+ *       did not make.
+ *   <li>the <b>DOMAIN</b> gate reads the RULE: a checker declares the kind of value its defect
+ *       class consumes -- a string for SQL, a number for an allocation size -- and the finding goes
+ *       when the value's kind is provably different. The rule is the authority here, so the gate
+ *       applies whether or not the catalogue says anything.
+ * </ul>
+ *
+ * <p>That is why the fourth program changed its expectation when the domain gate landed. It used to
+ * pin "a family that declares no type is not affected at all", which is true of the TYPE gate and
+ * false of the DOMAIN gate. It now pins the distinction itself: the TYPE gate's authority is the
+ * catalogue (see {@code theCatalogueIsTheOnlyAuthorityTheTypeGateHas}), and the DOMAIN gate's
+ * authority is the rule -- so a tainted number does not reach {@code re.compile} either, because
+ * {@code re.compile(42)} raises a TypeError in Python just as it would in Java.
  *
  * <h2>Why it SKIPS</h2>
  *
@@ -148,8 +173,10 @@ class SinkTypeGateTest {
    * A Python program whose tainted value is declared to be a NUMBER, and reaches a family that
    * declares no type.
    *
-   * <p>The regex family is the control: it is not one of the families that name a type, so the gate
-   * has nothing to ask and the finding is reported exactly as before.
+   * <p>The regex family is the control for the WHOLE mechanism: it is not one of the families that
+   * name a type, so the TYPE gate has nothing to ask. The DOMAIN gate still applies -- the rule
+   * declares that it consumes a string -- and {@code re.compile(42)} raises a TypeError in Python
+   * just as it would in Java.
    */
   private static final String PYTHON_NUMBER_INTO_A_FAMILY_WITHOUT_A_TYPE =
       """
@@ -211,8 +238,9 @@ class SinkTypeGateTest {
   }
 
   @Test
-  @DisplayName("a family that declares no type is not affected by the gate")
-  void aFamilyThatDeclaresNoTypeIsNotAffectedByTheGate(@TempDir Path directory) throws IOException {
+  @DisplayName("a family that declares no type is protected by the domain gate")
+  void aFamilyThatDeclaresNoTypeIsProtectedByTheDomainGate(@TempDir Path directory)
+      throws IOException {
     assumeTrue(pythonAvailable(), "the Python front end needs a Python 3 runtime on the PATH");
 
     Path file = directory.resolve("app.py");
@@ -226,8 +254,31 @@ class SinkTypeGateTest {
             new RegexInjectionChecker());
 
     assertThat(hasFinding(findings, REGEX_RULE, "re.compile"))
-        .as("the regex family declares no type, so every value is reported as before")
-        .isTrue();
+        .as(
+            "the regex family declares no type, so the TYPE gate has nothing to ask -- but the "
+                + "DOMAIN gate's authority is the RULE, which declares that it consumes a string, "
+                + "and re.compile(42) raises a TypeError")
+        .isFalse();
+  }
+
+  @Test
+  @DisplayName("the catalogue is the only authority the type gate has")
+  void theCatalogueIsTheOnlyAuthorityTheTypeGateHas() {
+    EngineConfig config = ConfigLoader.loadFromClasspath();
+    List<String> declaring = new ArrayList<>();
+    for (SinkFamily family : config.sinkFamilies().all()) {
+      if (family.expectsType() != null) {
+        declaring.add(family.name());
+      }
+    }
+
+    assertThat(declaring)
+        .as(
+            "the TYPE gate asks a family what type its argument must have, and the catalogue is "
+                + "the only place that answer comes from -- the engine does not substitute its own "
+                + "guess for a decision the catalogue did not make")
+        .contains("sql.sinks", "command.sinks")
+        .doesNotContain("regex.sinks", "mem-alloc.sinks");
   }
 
   @Test

@@ -185,7 +185,7 @@ public final class DivByZeroChecker extends TaintedCheckerBase {
     if (divisor instanceof TacOperand.TacVar) {
       TacOperand.TacVar v = (TacOperand.TacVar) divisor;
       msg = "Division by zero: divisor " + v.name() + " may be zero at " + String.valueOf(ins);
-      flow = "may-be-zero: " + (String) this.taintedVars.get(v);
+      flow = "may-be-zero: " + this.labelOf(v);
     } else {
       msg = "Division by zero: divisor is a literal zero at " + String.valueOf(ins);
       flow = "may-be-zero: const-0";

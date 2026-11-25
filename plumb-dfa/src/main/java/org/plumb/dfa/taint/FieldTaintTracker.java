@@ -347,7 +347,7 @@ public final class FieldTaintTracker {
       int callArgIndex,
       String calleeSig,
       List<?> callerArgs,
-      Map<TacOperand.TacVar, String> callerTaintedVars,
+      Map<TacOperand.TacVar, TaintFact> callerTaintedVars,
       Map<TacOperand.TacVar, List<FlowStep>> callerTaintPaths,
       int callLine,
       int callColumn,
@@ -378,7 +378,7 @@ public final class FieldTaintTracker {
       int callArgIndex,
       String calleeSig,
       List<?> callerArgs,
-      Map<TacOperand.TacVar, String> callerTaintedVars,
+      Map<TacOperand.TacVar, TaintFact> callerTaintedVars,
       Map<TacOperand.TacVar, List<FlowStep>> callerTaintPaths,
       Map<TacOperand.TacVar, Integer> callerV2Handles,
       int callLine,
@@ -476,7 +476,8 @@ public final class FieldTaintTracker {
     // append a "summary-fold" step
     // recording the cross-function
     // write.
-    String srcLabel = callerTaintedVars.get(av);
+    TaintFact srcFact = callerTaintedVars.get(av);
+    String srcLabel = srcFact.label();
     List<FlowStep> srcPath = callerTaintPaths.get(av);
     List<FlowStep> newPath = new ArrayList<>();
     if (srcPath != null) newPath.addAll(srcPath);

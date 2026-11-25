@@ -133,8 +133,8 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
               // Operand is bounded; skip.
             } else {
               String label = "arith:" + uop.name();
-              this.taintedVars.put(destVar, label);
-              String unopFlow = "overflow-hazard: " + this.taintedVars.get(operand);
+              this.taintedVars.put(destVar, factFor(destVar, label));
+              String unopFlow = "overflow-hazard: " + this.labelOf(operand);
               // same UNKNOWN-fallback as the
               // BINOP branch — if dest is UNKNOWN,
               // use the operand's type.
@@ -207,7 +207,7 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
     boolean lhs2Hazard =
         tacOperand3 instanceof TacOperand.TacVar
             && this.taintedVars.containsKey(l2 = (TacOperand.TacVar) tacOperand3);
-    this.taintedVars.put(destVar, "arith:" + String.valueOf(op));
+    this.taintedVars.put(destVar, factFor(destVar, "arith:" + String.valueOf(op)));
     if (lhs1Hazard || lhs2Hazard) {
       if (IntOverflowChecker.isStringConcat(ins.lhs1, ins.lhs2, destVar)) {
         return;
@@ -263,10 +263,7 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
       // We still want to surface that the underlying
       // variable is byte / short / etc.
       String binopFlow =
-          "overflow-hazard: "
-              + (lhs1Hazard
-                  ? (String) this.taintedVars.get(ins.lhs1)
-                  : (String) this.taintedVars.get(ins.lhs2));
+          "overflow-hazard: " + (lhs1Hazard ? this.labelOf(ins.lhs1) : this.labelOf(ins.lhs2));
       TacType sourceType =
           (lhs1Hazard && ins.lhs1 instanceof TacOperand.TacVar)
               ? ((TacOperand.TacVar) ins.lhs1).type()
