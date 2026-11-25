@@ -112,14 +112,17 @@ public final class DivByZeroChecker extends TaintedCheckerBase {
 
   public void checkInstruction(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
     super.checkInstruction(ins, fn, ctx);
-    // Detect input source calls and mark dest as
-    // "may-be-zero".
-    if (ins.kind == TacInstruction.Kind.CALL) {
-      String callee = ins.calleeSig;
-      if (isInputSourceCall(callee, ctx) && ins.dest instanceof TacOperand.TacVar d) {
-        markSource(d, "input:" + callee, ins, fn.signature(), "input " + callee);
-      }
-    }
+    // The base class owns the "input source" label: it marks an
+    // input-source call's destination with "input:<callee>" and the matching
+    // flow path. This checker used to write that label again, with its own
+    // copy of the format. The two agreed only by coincidence, and a change to
+    // the base's format would have left this checker writing the old one, so
+    // the same source would carry two labels depending on which rule reported
+    // it.
+    //
+    // What this checker needs from the marking is only that the destination
+    // is TAINTED (see the containsKey test below), never what the label says,
+    // so dropping the duplicate costs it nothing.
     guards.track(ins);
     if (ins.kind != TacInstruction.Kind.BINOP) return;
     if (ins.binop != BinaryOperator.DIV && ins.binop != BinaryOperator.MOD) return;

@@ -105,16 +105,13 @@ public final class ArrayIndexChecker extends TaintedCheckerBase {
   }
 
   public void checkInstruction(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
-    TacOperand.TacVar d;
-    TacOperand tacOperand;
-    String callee;
     super.checkInstruction(ins, fn, ctx);
-    if (ins.kind == TacInstruction.Kind.CALL
-        && isInputSourceCall((String) (callee = ins.calleeSig), ctx)
-        && (tacOperand = ins.dest) instanceof TacOperand.TacVar) {
-      d = (TacOperand.TacVar) tacOperand;
-      this.taintedVars.put(d, "input:" + callee);
-    }
+    // The base class owns the "input source" label: it marks an input-source
+    // call's destination with "input:<callee>" and the matching flow path.
+    // This checker used to write that label again, with its own copy of the
+    // format -- the two agreed only by coincidence, and a change to the base's
+    // format would have left this checker writing the old one, so the same
+    // source would carry two labels depending on which rule reported it.
     this.guards.track(ins);
     // also handle NEWARRAY (`new T[size]`) — the
     // canonical CWE-129 array-allocation sink. The size

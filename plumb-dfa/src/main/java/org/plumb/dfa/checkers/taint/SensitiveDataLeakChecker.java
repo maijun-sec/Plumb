@@ -80,6 +80,10 @@ public final class SensitiveDataLeakChecker extends TaintedCheckerBase {
       TacOperand.TacVar d = (TacOperand.TacVar) tacOperand;
       String callee = ins.calleeSig;
       if (callee != null && SensitiveDataLeakChecker.isSensitiveSourceCall(callee)) {
+        // This checker owns this marking: the base class does not know the
+        // sensitive-source patterns, so without this line the value would
+        // never be tainted and the rule would report nothing. It is a
+        // deliberate re-tagging, not a duplicate of the base class's write.
         this.taintedVars.put(d, "sensitive:" + callee);
       }
     }

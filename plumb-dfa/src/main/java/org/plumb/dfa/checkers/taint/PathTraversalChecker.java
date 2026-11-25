@@ -71,12 +71,12 @@ public final class PathTraversalChecker extends TaintedCheckerBase {
     Object object;
     String callee;
     super.checkInstruction(ins, fn, ctx);
-    if (ins.kind == TacInstruction.Kind.CALL
-        && isInputSourceCall((String) (callee = ins.calleeSig), ctx)
-        && (object = ins.dest) instanceof TacOperand.TacVar) {
-      d = (TacOperand.TacVar) object;
-      this.taintedVars.put(d, "input:" + callee);
-    }
+    // The base class owns the "input source" label: it marks an input-source
+    // call's destination with "input:<callee>" and the matching flow path.
+    // This checker used to write that label again, with its own copy of the
+    // format -- the two agreed only by coincidence, and a change to the base's
+    // format would have left this checker writing the old one, so the same
+    // source would carry two labels depending on which rule reported it.
     if (ins.kind == TacInstruction.Kind.NEW) {
       callee = ins.calleeSig;
       if (callee != null && (object = ins.dest) instanceof TacOperand.TacVar) {

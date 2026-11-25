@@ -85,6 +85,10 @@ public final class SensitivePIILeakChecker extends TaintedCheckerBase {
       TacOperand.TacVar d = (TacOperand.TacVar) tacOperand;
       String callee = ins.calleeSig;
       if (callee != null && SensitivePIILeakChecker.isPIISourceCall(callee)) {
+        // This checker owns this marking: the base class does not know the
+        // PII source patterns, so without this line the value would never be
+        // tainted and the rule would report nothing. It is a deliberate
+        // re-tagging, not a duplicate of the base class's write.
         this.taintedVars.put(d, "pii:" + callee);
       }
     }
