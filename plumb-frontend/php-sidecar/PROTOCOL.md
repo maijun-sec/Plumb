@@ -341,6 +341,19 @@ ignores any field it does not know.
 | `spreadArgs` | `CALL`, `UNINTERPRETED` | The arguments that were unpacked. |
 | `aliasOf` | `MOVE`, `ARRAYSTORE` | The location the written name aliases. |
 | `deleteKey` | `ARRAYSTORE` | True when the store removes the key instead of writing it. |
+| `ctorType` | `NEW`, `INSTANCEOF`, `CATCH_HANDLER`, `THROW` | The class the instruction is about: the class a `NEW` constructs, the class an `INSTANCEOF` tests, the class a `CATCH_HANDLER` catches -- and, on a `THROW`, the class of the exception that is thrown. |
+
+A `THROW` names the type of the value it throws whenever the source names one:
+a construction of a class, or a variable that was given one. PHP has no static
+types, so that is the whole of what it can say, and a `THROW` of anything else
+names no type at all.
+
+The engine matches a catch handler against that type: the handler whose
+declared type is the same class is the handler that runs, and the handlers
+after it are unreachable for that throw. The name a `THROW` carries is spelled
+the way the source spells it -- `\RuntimeException`, with the leading
+backslash -- because that is the spelling the matching handler carries too, and
+the engine compares the two names.
 
 ### The guard
 

@@ -55,6 +55,20 @@ from plumb_wire import (
 # carries.
 BUILTIN_NAMES = frozenset(dir(builtins))
 
+# The names of the exceptions Python's own runtime provides.
+#
+# These are the classes a ``raise`` may name: a name that is not one of them
+# and is not a class of the module's own is a FUNCTION, and a function's
+# result is not an exception type. The engine matches a catch handler against
+# the type of the raised value, so a name that is not an exception class says
+# nothing about which handler would catch it.
+BUILTIN_EXCEPTION_NAMES = frozenset(
+    name
+    for name in BUILTIN_NAMES
+    if isinstance(getattr(builtins, name), type)
+    and issubclass(getattr(builtins, name), BaseException)
+)
+
 # The type a call of a BUILT-IN function returns.
 #
 # These are facts about the language, not declarations: `int(x)` returns an int
@@ -425,6 +439,10 @@ class Translator:
         self.imported_names = {}
         # The classes and the functions the module declares.
         self.defined_classes = set()
+        # The bases the module's classes declare, by the class that declares
+        # them. A class that extends an exception is an exception class, and
+        # only the bases say so.
+        self.class_bases = {}
         self.defined_functions = {}
         # The methods the module's classes declare. They are kept apart
         # from the module's own functions: a method's receiver is not one
@@ -585,6 +603,8 @@ class Translator:
                 self.imported_modules.setdefault(local, qualified)
         elif isinstance(node, ast.ClassDef):
             self.defined_classes.add(node.name)
+            bases = [self.annotation_name(base) for base in node.bases or ()]
+            self.class_bases.setdefault(node.name, [base for base in bases if base])
             path = "%s.%s" % (path, node.name) if path else node.name
             self.class_paths.setdefault(node.name, path)
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -2024,7 +2044,14 @@ class Translator:
             if node.cause:
                 self.lower_expression(node.cause)
             value = self.lower_expression(node.exc) if node.exc else None
-            self.emit({"kind": Kind.THROW, "lhs1": value, **self.position(node)})
+            self.emit(
+                {
+                    "kind": Kind.THROW,
+                    "lhs1": value,
+                    "ctorType": self.thrown_type_of(node.exc),
+                    **self.position(node),
+                }
+            )
             return
         if isinstance(node, ast.If):
             self.lower_if(node)
@@ -3196,6 +3223,68 @@ class Translator:
                 "resourceVars": [],
             }
         )
+
+    def thrown_type_of(self, node):
+        """The type of the value a raise raises, when the source names it.
+
+        The type is what the engine matches a catch handler against: the
+        handler whose declared type is a supertype of this one is the handler
+        that runs, and the handlers after it do not. Without the type every
+        handler stays reachable from every raise.
+
+        Python has no static types, so this is the narrow set of cases where
+        the source names an exception class: a construction of one, and a
+        variable whose declared type is one. A raise of anything else -- a
+        function's result, an attribute read -- leaves the type out rather
+        than guessing it, because a wrong type here makes the engine match
+        the throw to a handler that cannot catch it.
+        """
+        if node is None:
+            return None
+        name = None
+        if isinstance(node, ast.Call):
+            function = node.func
+            if isinstance(function, ast.Name):
+                name = function.id
+            elif isinstance(function, ast.Attribute):
+                name = function.attr
+        elif isinstance(node, ast.Name):
+            name = self.state.types.get(node.id)
+        if not name:
+            return None
+        if not self.is_exception_class(name):
+            return None
+        return {"kind": Type.CLASS, "name": name}
+
+    def is_exception_class(self, name):
+        """Whether a name is a class that can be raised.
+
+        A BUILT-IN exception is one the runtime provides. A class the module
+        declares is one when it extends an exception -- directly, or through
+        the module's own classes.
+        """
+        if not name:
+            return False
+        simple = name.split(".")[-1]
+        if simple in BUILTIN_EXCEPTION_NAMES:
+            return True
+        return self.derives_from_exception(simple)
+
+    def derives_from_exception(self, name, seen=None):
+        """Whether a class of the module's own extends an exception."""
+        seen = set() if seen is None else seen
+        if name in seen:
+            # A cycle in the bases: the table is broken, so nothing is
+            # concluded from it.
+            return False
+        seen.add(name)
+        for base in self.class_bases.get(name, ()):
+            simple = base.split(".")[-1]
+            if simple in BUILTIN_EXCEPTION_NAMES:
+                return True
+            if self.derives_from_exception(simple, seen):
+                return True
+        return False
 
     def exception_type_names(self, node):
         """The exception types a handler catches.

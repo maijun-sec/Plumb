@@ -1063,11 +1063,76 @@ internal sealed partial class TacTranslator
         if (thrown.Expression is null)
         {
             // A rethrow: `throw;`.
+            //
+            // It re-throws the exception the handler caught, and the handler's
+            // type is a SUPERtype of the exception's own type -- so the type
+            // that would go here is the handler's, which this translator does
+            // not track. The type is left out rather than guessed: a wrong
+            // type here makes the engine match the throw to a handler that
+            // cannot catch it.
             Emit(InstructionKind.THROW, node: thrown);
             return;
         }
         var value = TranslateExpression(thrown.Expression, store: false);
-        Emit(InstructionKind.THROW, lhs1: value, node: thrown);
+        Emit(InstructionKind.THROW, lhs1: value, ctorType: ThrownType(thrown.Expression), node: thrown);
+    }
+
+    /// <summary>
+    /// The type of the value a throw throws, when the compiler knows it.
+    /// </summary>
+    /// <param name="expression">the thrown expression</param>
+    /// <returns>
+    /// the type, or null when it is not an exception the compiler could name
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// The type is what the engine matches a catch handler against: the
+    /// handler whose declared type is a supertype of this one is the handler
+    /// that runs, and the handlers after it do not. Without the type every
+    /// handler stays reachable from every throw.
+    /// </para>
+    /// <para>
+    /// Only an EXCEPTION is reported. A catch clause can only catch an
+    /// exception, so the type of anything else says nothing about which
+    /// handler would catch it -- and C# models a string as the class
+    /// <c>System.String</c>, which is a class and not an exception.
+    /// </para>
+    /// </remarks>
+    private TypeRef? ThrownType(ExpressionSyntax expression)
+    {
+        var type = _model.GetTypeInfo(expression).Type;
+        if (type is null)
+        {
+            return null;
+        }
+        if (!IsException(type))
+        {
+            return null;
+        }
+        var mapped = TypeMapper.Map(type);
+        return mapped.Kind == "CLASS" ? mapped : null;
+    }
+
+    /// <summary>
+    /// Whether the type is an exception: something a catch clause can catch.
+    /// </summary>
+    /// <param name="type">the type</param>
+    /// <returns>true when the type derives from <c>System.Exception</c></returns>
+    /// <remarks>
+    /// The compiler knows the whole hierarchy, so this is a fact and not a
+    /// guess. A type parameter is not an exception here: its bound says what
+    /// it may be, and the exception it may be is not known.
+    /// </remarks>
+    private static bool IsException(ITypeSymbol type)
+    {
+        for (var current = type; current is not null; current = current.BaseType)
+        {
+            if (TypeMapper.FullName(current) == "System.Exception")
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>
@@ -1102,12 +1167,19 @@ internal sealed partial class TacTranslator
         var finallyLabel = tryStatement.Finally is null ? null : NewLabel("finally");
         var endLabel = NewLabel("try_end");
 
-        Emit(InstructionKind.LABEL, label: tryStart, node: tryStatement);
-
         // The region's instruction range. The engine asks WHICH INSTRUCTIONS the region
         // covers, so the range has to be an index range: a label says where a place is,
         // not how far the region reaches.
+        //
+        // The range STARTS AT THE LABEL, not at the first instruction of the body. The
+        // engine's CFG builder reads the range as a range of BLOCKS, and the block of
+        // the try body is the one that starts at the label. A range that started after
+        // the label would leave that block outside the region, and a block outside the
+        // region gets no exception edge -- so the catch handlers of every C# try were
+        // unreachable, and the type a throw carries could never be matched against
+        // them.
         var tryStartIndex = _instructions.Count;
+        Emit(InstructionKind.LABEL, label: tryStart, node: tryStatement);
         TranslateBlock(tryStatement.Block);
         var tryEndIndex = _instructions.Count - 1;
         Emit(InstructionKind.JUMP, label: finallyLabel ?? afterTry, node: tryStatement);

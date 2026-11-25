@@ -92,6 +92,30 @@ function spellings(string $cmd, string $xml): void {
 `;
 
 /**
+ * The fifth probe program: the throw.
+ *
+ * <p>A THROW says WHAT it throws. The engine matches a catch handler against
+ * that type, so a throw that does not name its type leaves every handler
+ * reachable from every throw -- and a handler that cannot receive the
+ * exception inherits its taint all the same.
+ */
+const THROW_SOURCE = `<?php
+namespace App\\Services;
+
+function handle(string $input): string {
+    try {
+        throw new \\RuntimeException($input);
+    } catch (\\RuntimeException $e) {
+        return $e->getMessage();
+    }
+}
+
+function plain(string $input): string {
+    throw $input;
+}
+`;
+
+/**
  * The fourth probe program: the control flow whose shape has to be right.
  *
  * Every construct in here is one the acceptance list names, and every one of
@@ -974,6 +998,67 @@ class Child extends Base implements Shape {
     check(
       (childType.interfaces ?? []).includes("App\\Services\\Shape"),
       `a class's interfaces must be declared: ${JSON.stringify(childType.interfaces)}`,
+    );
+
+    // ---- the throw ---------------------------------------------------------------------------
+
+    const throwFile = join(dir, "throw.php");
+    writeFileSync(throwFile, THROW_SOURCE, "utf8");
+    writeFrame(
+      child.stdin,
+      JSON.stringify({
+        op: OP.TRANSLATE,
+        protocolVersion: PROTOCOL_VERSION,
+        irVersion: IR_VERSION,
+        path: throwFile,
+        language: "PHP",
+      }),
+    );
+    response = JSON.parse(await readFrame(child.stdout));
+    check(response.ok === true, `the throw file must translate: ${response.error ?? ""}`);
+
+    const throwFunctions = response.functions ?? [];
+    const throwHandler = throwFunctions.find((f) => f.name === "handle");
+    check(!!throwHandler, "the function that throws must be in the stream");
+
+    // A THROW says WHAT it throws. The engine matches a catch handler against
+    // that type, so a throw without one leaves every handler reachable from
+    // every throw.
+    const typedThrow = (throwHandler.instructions ?? []).find((i) => i.kind === "THROW");
+    check(!!typedThrow, "the throw must be in the stream");
+    check(
+      typedThrow.ctorType && typedThrow.ctorType.kind === "CLASS",
+      `a throw must name the type it throws: ${JSON.stringify(typedThrow.ctorType)}`,
+    );
+    check(
+      typedThrow.ctorType.name === "\\RuntimeException",
+      `a throw must name the class it throws: ${JSON.stringify(typedThrow.ctorType)}`,
+    );
+
+    // The catch names the SAME class, and in the SAME spelling: the engine
+    // compares the two names, and a name it cannot compare says nothing.
+    const catchHandler = (throwHandler.instructions ?? []).find((i) => i.kind === "CATCH_HANDLER");
+    check(!!catchHandler, "the catch must be in the stream");
+    check(
+      catchHandler.ctorType && catchHandler.ctorType.name === typedThrow.ctorType.name,
+      `a catch and the throw it catches must name the class the same way: ${JSON.stringify(
+        catchHandler.ctorType,
+      )}`,
+    );
+
+    // A throw of something that is not a class names NO type. A handler's
+    // declared type is always a class, so a string says nothing about which
+    // handler would catch it -- and a wrong type here makes the engine match
+    // the throw to a handler that cannot catch it.
+    const plainFunction = throwFunctions.find((f) => f.name === "plain");
+    check(!!plainFunction, "the function that throws a plain value must be in the stream");
+    const plainThrow = (plainFunction.instructions ?? []).find((i) => i.kind === "THROW");
+    check(!!plainThrow, "the plain throw must be in the stream");
+    check(
+      !plainThrow.ctorType,
+      `a throw of a value that is not a class must name no type: ${JSON.stringify(
+        plainThrow.ctorType,
+      )}`,
     );
 
     console.log("ok: the sidecar answers over the wire, and the TAC has the expected shape");

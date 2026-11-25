@@ -169,6 +169,15 @@ Only the fields that the kind actually uses are present. The Java side ignores
 any field it does not know, so adding a field to this protocol is
 backwards-compatible in one direction (old sidecar → new Java side works).
 
+A `THROW` carries the `ctorType` of the value it throws: the class of the
+exception, fully qualified (`System.IO.IOException`). The engine matches a catch
+handler against that type -- the handler whose declared type is a supertype of
+the thrown one is the handler that runs, and the handlers after it are
+unreachable for that throw -- so without it every handler stays reachable from
+every throw. A `THROW` of a value that is not a class names no type, and a
+rethrow (`throw;`) names none either: the exception it re-throws is the one the
+handler caught, and the handler's type is a supertype of it.
+
 ### Operand encoding
 
 ```json

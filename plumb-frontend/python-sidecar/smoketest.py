@@ -209,6 +209,38 @@ def uses():
 '''
 
 
+# The fourth probe program: the throw.
+#
+# A THROW says WHAT it throws. The engine matches a catch handler against
+# that type, so a throw that does not name its type leaves every handler
+# reachable from every throw -- and a handler that cannot receive the
+# exception inherits its taint all the same.
+THROW_SOURCE = '''class AppError(Exception):
+    pass
+
+
+def handle(request):
+    failure = AppError("boom")
+    try:
+        raise failure
+    except AppError as error:
+        return str(error)
+    except Exception as other:
+        return str(other)
+
+
+def builtin(request):
+    try:
+        raise ValueError("boom")
+    except ValueError as error:
+        return str(error)
+
+
+def plain(request):
+    raise request
+'''
+
+
 def fail(message):
     """Fail the test with a message."""
     print("FAIL: %s" % message, file=sys.stderr)
@@ -918,6 +950,92 @@ def main():
         check(
             child_type.get("superType") == "Base",
             "a class's base must be declared: %s" % child_type.get("superType"),
+        )
+
+        # ---- the throw -----------------------------------------------------------------------
+
+        throw_path = os.path.join(directory, "throw.py")
+        with open(throw_path, "w", encoding="utf-8") as handle:
+            handle.write(THROW_SOURCE)
+        write_frame(
+            child.stdin,
+            json.dumps(
+                {
+                    "op": Op.TRANSLATE,
+                    "protocolVersion": PROTOCOL_VERSION,
+                    "irVersion": IR_VERSION,
+                    "path": throw_path,
+                    "language": "PYTHON3",
+                }
+            ),
+        )
+        response = read_frame(child.stdout)
+        check(response.get("ok") is True, "the throw file must translate: %s" % response.get("error", ""))
+        throw_functions = response.get("functions") or []
+
+        def throw_function(name):
+            return next((f for f in throw_functions if f["name"] == name), None)
+
+        # A THROW says WHAT it throws. The engine matches a catch handler
+        # against that type, so a throw without one leaves every handler
+        # reachable from every throw.
+        handle_function = throw_function("handle")
+        check(handle_function is not None, "the function that raises must be in the stream")
+        typed_throw = next(
+            (i for i in handle_function["instructions"] if i["kind"] == "THROW"),
+            None,
+        )
+        check(typed_throw is not None, "the raise must be in the stream")
+        check(
+            (typed_throw.get("ctorType") or {}).get("kind") == "CLASS",
+            "a raise must name the type it raises: %s" % typed_throw.get("ctorType"),
+        )
+        check(
+            typed_throw["ctorType"].get("name") == "AppError",
+            "a raise must name the class it raises: %s" % typed_throw.get("ctorType"),
+        )
+
+        # The catch names the SAME class, and in the SAME spelling: the engine
+        # compares the two names, and a name it cannot compare says nothing.
+        catch_handler = next(
+            (i for i in handle_function["instructions"] if i["kind"] == "CATCH_HANDLER"),
+            None,
+        )
+        check(catch_handler is not None, "the handler must be in the stream")
+        check(
+            (catch_handler.get("ctorType") or {}).get("name") == typed_throw["ctorType"].get("name"),
+            "a handler and the raise it catches must name the class the same way: %s"
+            % catch_handler.get("ctorType"),
+        )
+
+        # A BUILT-IN exception is named too: the runtime provides it.
+        builtin_function = throw_function("builtin")
+        check(builtin_function is not None, "the function that raises a builtin must be in the stream")
+        builtin_throw = next(
+            (i for i in builtin_function["instructions"] if i["kind"] == "THROW"),
+            None,
+        )
+        check(builtin_throw is not None, "the builtin raise must be in the stream")
+        check(
+            (builtin_throw.get("ctorType") or {}).get("name") == "ValueError",
+            "a raise of a builtin exception must name it: %s" % builtin_throw.get("ctorType"),
+        )
+
+        # A raise of something that is not an exception class names NO type.
+        # A handler's declared type is always a class, so a plain value says
+        # nothing about which handler would catch it -- and a wrong type here
+        # makes the engine match the throw to a handler that cannot catch it.
+        plain_function = throw_function("plain")
+        check(plain_function is not None, "the function that raises a plain value must be in the stream")
+        plain_throw = next(
+            (i for i in plain_function["instructions"] if i["kind"] == "THROW"),
+            None,
+        )
+        check(plain_throw is not None, "the plain raise must be in the stream")
+        check(
+            not plain_throw.get("ctorType"),
+            "a raise of a value that is not an exception must name no type: %s"
+            % plain_throw.get("ctorType"),
         )
 
         print("ok: the sidecar answers over the wire, and the TAC has the expected shape")

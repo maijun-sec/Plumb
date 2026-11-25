@@ -285,7 +285,7 @@ The instruction kinds are the TAC's own, by name:
 Only the fields that the kind actually uses are present. The Java side
 ignores any field it does not know.
 
-Four instruction fields carry facts that are not operands:
+Five instruction fields carry facts that are not operands:
 
 | Field | Meaning |
 |---|---|
@@ -293,6 +293,15 @@ Four instruction fields carry facts that are not operands:
 | `labelRef` | What a `LABEL` marks. |
 | `ownerType` | The class that owns the field, on a `FIELDLOAD` or a `FIELDSTORE`. |
 | `fieldName` | The field's name, on a `FIELDLOAD` or a `FIELDSTORE`. |
+| `ctorType` | The class the instruction is about: the class a `NEW` constructs, the class an `INSTANCEOF` tests, the class a `CATCH_HANDLER` catches -- and, on a `THROW`, the class of the exception that is thrown. |
+
+A `THROW` names the type of the value it throws whenever the compiler can say
+what that type is. The engine matches a catch handler against that type: the
+handler whose declared type is a supertype of the thrown one is the handler that
+runs, and the handlers after it are unreachable for that throw. A `THROW` of a
+value that is not a class -- a string, an `unknown` -- names no type at all,
+because a handler's declared type is always a class and a wrong type here would
+route the exception to a handler that cannot catch it.
 
 A `guard` is one of:
 

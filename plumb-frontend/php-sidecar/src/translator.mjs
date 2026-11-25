@@ -1380,8 +1380,68 @@ export class Translator {
     this.emit({
       kind: KIND.THROW,
       lhs1: thrown,
+      ctorType: this.thrownTypeOf(node.what),
       ...this.position(node),
     });
+  }
+
+  /**
+   * The type of the value a throw throws, when the source names it.
+   *
+   * <p>The type is what the engine matches a catch handler against: the
+   * handler whose declared type is the same class is the handler that runs,
+   * and the handlers after it do not. Without the type every handler stays
+   * reachable from every throw.
+   *
+   * <p>PHP has no static types, so this is the narrow set of cases where the
+   * source names a class: a construction of one, and a variable that was
+   * given one. A throw of anything else -- a function's result, a property
+   * read -- leaves the type out rather than guessing it, because a wrong type
+   * here makes the engine match the throw to a handler that cannot catch it.
+   *
+   * @param {object} node the thrown expression
+   * @return {object|null} the TAC type, or null
+   */
+  thrownTypeOf(node) {
+    if (!node) return null;
+    if (node.kind === "new") {
+      const name = this.constructedClassName(node.what);
+      return name ? { kind: TYPE.CLASS, name } : null;
+    }
+    if (node.kind === "variable") {
+      const name = this.state.types.get(node.name);
+      if (!name) return null;
+      // The variable's type is read through the same table every other type
+      // is: a `string` is a string and not a class, and a class is a class.
+      const type = this.tacTypeOfName(name);
+      return type.kind === TYPE.CLASS ? type : null;
+    }
+    return null;
+  }
+
+  /**
+   * The class a construction names, when the source names one.
+   *
+   * <p>The construction's own lowering already reports what it could not
+   * name, so this reads the name WITHOUT reporting it again: a drop that is
+   * counted twice says the program lost something twice.
+   *
+   * @param {object} what the `what` node of the construction
+   * @return {string|null} the qualified class name, or null
+   */
+  constructedClassName(what) {
+    if (!what) return null;
+    if (what.kind === "selfreference" || what.kind === "staticreference") {
+      return this.enclosingClassName();
+    }
+    if (what.kind === "parentreference") {
+      // The parent class, when the class says what it extends. When it does
+      // not, the name is left out rather than replaced by the class the code
+      // is written in -- that is a different class.
+      return this.state?.superType ?? null;
+    }
+    if (what.kind === "variable") return null;
+    return this.qualifiedClassNameOf(what);
   }
 
   /**

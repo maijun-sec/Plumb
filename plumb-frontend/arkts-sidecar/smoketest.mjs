@@ -223,6 +223,34 @@ export function runIife(request: any): any {
 }
 `;
 
+/**
+ * A fifth probe program: the throw.
+ *
+ * <p>A THROW says WHAT it throws. The engine matches a catch handler against
+ * that type, so a throw that does not name its type leaves every handler
+ * reachable from every throw -- and a handler that cannot receive the
+ * exception inherits its taint all the same.
+ */
+const THROW_SOURCE = `
+export class AppError extends Error {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+export function handle(input: string): string {
+  try {
+    throw new AppError(input);
+  } catch (error) {
+    return String(error);
+  }
+}
+
+export function plain(input: string): string {
+  throw input;
+}
+`;
+
 async function main() {
   const dir = mkdtempSync(join(tmpdir(), "plumb-arkts-smoke-"));
   const file = join(dir, "Page.ets");
@@ -235,6 +263,8 @@ async function main() {
   writeFileSync(shapesFile, SHAPES_SOURCE, "utf8");
   const iifeFile = join(dir, "Iife.ets");
   writeFileSync(iifeFile, IIFE_SOURCE, "utf8");
+  const throwFile = join(dir, "Throw.ets");
+  writeFileSync(throwFile, THROW_SOURCE, "utf8");
 
   const child = spawn(process.execPath, [join(here, "src", "main.mjs")], {
     stdio: ["pipe", "pipe", "inherit"],
@@ -277,6 +307,7 @@ async function main() {
       { path: noClassFile },
       { path: shapesFile },
       { path: iifeFile },
+      { path: throwFile },
     ],
       }),
     );
@@ -891,6 +922,54 @@ async function main() {
     check(
       (iifeOuter.drops ?? []).some((d) => d.construct === "iife-body"),
       "the capture the lifting cannot model must be recorded as a drop",
+    );
+
+    // ---- the throw ---------------------------------------------------------------------------
+
+    writeFrame(
+      child.stdin,
+      JSON.stringify({
+        op: OP.TRANSLATE,
+        protocolVersion: PROTOCOL_VERSION,
+        irVersion: IR_VERSION,
+        path: throwFile,
+        language: "ARKTS",
+      }),
+    );
+    response = JSON.parse(await readFrame(child.stdout));
+    check(response.ok === true, `the throw file must translate: ${response.error ?? ""}`);
+
+    const throwFunctions = response.functions ?? [];
+    const throwHandler = throwFunctions.find((f) => f.name === "handle");
+    check(!!throwHandler, "the function that throws must be in the stream");
+
+    // A THROW says WHAT it throws. The engine matches a catch handler against
+    // that type, so a throw without one leaves every handler reachable from
+    // every throw.
+    const typedThrow = (throwHandler.instructions ?? []).find((i) => i.kind === "THROW");
+    check(!!typedThrow, "the throw must be in the stream");
+    check(
+      typedThrow.ctorType && typedThrow.ctorType.kind === "CLASS",
+      `a throw must name the type it throws: ${JSON.stringify(typedThrow.ctorType)}`,
+    );
+    check(
+      typedThrow.ctorType.name === "AppError",
+      `a throw must name the class it throws: ${JSON.stringify(typedThrow.ctorType)}`,
+    );
+
+    // A throw of something that is not a class names NO type. A handler's
+    // declared type is always a class, so a string says nothing about which
+    // handler would catch it -- and a wrong type here makes the engine match
+    // the throw to a handler that cannot catch it.
+    const plainFunction = throwFunctions.find((f) => f.name === "plain");
+    check(!!plainFunction, "the function that throws a plain value must be in the stream");
+    const plainThrow = (plainFunction.instructions ?? []).find((i) => i.kind === "THROW");
+    check(!!plainThrow, "the plain throw must be in the stream");
+    check(
+      !plainThrow.ctorType,
+      `a throw of a value that is not a class must name no type: ${JSON.stringify(
+        plainThrow.ctorType,
+      )}`,
     );
 
     console.log("ok: the sidecar answers over the wire, and the TAC has the expected shape");

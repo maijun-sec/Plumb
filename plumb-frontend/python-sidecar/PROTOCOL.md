@@ -327,6 +327,19 @@ ignores any field it does not know.
 | `spreadArgs` | `CALL`, `UNINTERPRETED` | The arguments that were unpacked. |
 | `aliasOf` | `MOVE`, `ARRAYSTORE` | The location the written name aliases. |
 | `deleteKey` | `ARRAYSTORE` | True when the store removes the key instead of writing it. |
+| `ctorType` | `NEW`, `INSTANCEOF`, `CATCH_HANDLER`, `THROW` | The class the instruction is about: the class a `NEW` constructs, the class an `INSTANCEOF` tests, the class a `CATCH_HANDLER` catches -- and, on a `THROW`, the class of the exception that is raised. |
+
+A `THROW` names the type of the value it raises whenever the source names an
+exception class: a construction of one, or a variable whose declared type is
+one. Python has no static types, so that is the whole of what it can say, and a
+`raise` of anything else names no type at all.
+
+The engine matches a catch handler against that type: the handler whose
+declared type is a supertype of the raised one is the handler that runs, and the
+handlers after it are unreachable for that throw. A name that is not an
+exception class -- a function, a value -- is left out rather than guessed at,
+because a handler's declared type is always a class and a wrong type here would
+route the exception to a handler that cannot catch it.
 
 ### The guard
 

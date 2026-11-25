@@ -1927,7 +1927,12 @@ export class Translator {
     }
     if (isThrowStatement(node)) {
       const value = node.expression ? this.lowerExpression(node.expression) : undefined;
-      this.emit({ kind: KIND.THROW, lhs1: value, ...this.position(node) });
+      this.emit({
+        kind: KIND.THROW,
+        lhs1: value,
+        ctorType: this.thrownTypeOf(node.expression),
+        ...this.position(node),
+      });
       return;
     }
     if (isIfStatement(node)) {
@@ -4759,6 +4764,28 @@ export class Translator {
     }
     if (!type) return undefined;
     return mapType(type, this.checker, this);
+  }
+
+  /**
+   * The type of the value a throw throws, when the compiler knows it.
+   *
+   * <p>The type is what the engine matches a catch handler against: the
+   * handler whose declared type is a supertype of this one is the handler
+   * that runs, and the handlers after it do not. Without the type every
+   * handler stays reachable from every throw.
+   *
+   * <p>Only a CLASS is reported. A handler's declared type is always a
+   * class, so a primitive or an array says nothing about which handler
+   * would catch the exception -- and an `unknown` says nothing either.
+   *
+   * @param {object} node the thrown expression
+   * @return {object|undefined} the TAC type, or undefined
+   */
+  thrownTypeOf(node) {
+    if (!node) return undefined;
+    const type = this.typeOf(node);
+    if (!type || type.kind !== TYPE.CLASS) return undefined;
+    return type;
   }
 
   typeTextOf(node) {
