@@ -76,6 +76,43 @@ public interface SolverZ3Bridge {
   Result check(String predicate, Map<String, Object> bindings);
 
   /**
+   * Check whether {@code predicate} is satisfiable when every identifier in it is a <em>free
+   * integer constant</em>.
+   *
+   * <p>This is a DIFFERENT question from {@link #check(String, Map)}. There, the bindings give the
+   * identifiers their values and the predicate is evaluated against them. Here, no identifier has a
+   * value, and the question is whether <em>some</em> assignment of values satisfies the predicate —
+   * which is the question a path condition actually asks: "can this source reach this sink?".
+   *
+   * <h2>Why it is a separate method</h2>
+   *
+   * <p>Because the two bridges answer the two questions differently, and the difference used to be
+   * invisible. The native bridge hands the formula to Z3 with the identifiers as free constants —
+   * <em>the same</em> constant for every occurrence of a name, or the formula Z3 receives is not
+   * the formula that was written — so it can say UNSAT about {@code x > 0 && x <= 0}. The pure-Java
+   * bridge evaluates, and an identifier it was not given is a value it cannot produce, so under the
+   * same method name it answered "satisfiable" for every formula. The engine's behaviour therefore
+   * depended on whether the machine had the native library — the same code, two answers.
+   *
+   * <p>Giving the question its own name lets each bridge answer it the way it can: the native one
+   * with Z3, the pure-Java one with {@link FreeConstantSolver}, which decides the same shapes
+   * exactly. The engine then gets the same answer on every machine.
+   *
+   * <p>The default implementation asks {@link #check(String, Map)} with no bindings. That is the
+   * conservative answer — a bridge that cannot evaluate an unbound identifier says "satisfiable" —
+   * so a bridge that has not been taught the satisfiability question answers it this way. A bridge
+   * that CAN answer it overrides this method: {@link LocalSolverBridge} decides it in pure Java,
+   * and {@link Z3Bridge} asks the native library. A bridge that cannot decide it at all should
+   * return {@link Result#UNKNOWN}, which every caller reads as "the path might be reachable".
+   *
+   * @param predicate a small predicate string (see {@link LocalSolverBridge} for the grammar)
+   * @return SAT when some assignment satisfies it, UNSAT when none does
+   */
+  default Result checkSatisfiable(String predicate) {
+    return check(predicate, Map.of());
+  }
+
+  /**
    * Check whether {@code antecedent ⇒ consequent} is logically valid. Equivalent to {@code check}
    * of {@code (!antecedent) || consequent} but is the API the new guard-composition layer uses to
    * compare two guards across checkers.

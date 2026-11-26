@@ -86,6 +86,29 @@ public final class CachedZ3Bridge implements SolverZ3Bridge {
     }
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * <p>Cached under a key of its OWN, because the two questions can have different answers for the
+   * same predicate: the evaluation question with no bindings answers "satisfiable" for anything
+   * with a free identifier, while the satisfiability question may answer "unsatisfiable". Sharing
+   * one cache entry would let the first answer poison the second.
+   */
+  @Override
+  public Result checkSatisfiable(String predicate) {
+    String key = "sat|" + (predicate == null ? "" : predicate);
+    lock.lock();
+    try {
+      Result cached = cache.get(key);
+      if (cached != null) return cached;
+      Result r = inner.checkSatisfiable(predicate);
+      cache.put(key, r);
+      return r;
+    } finally {
+      lock.unlock();
+    }
+  }
+
   @Override
   public Set<String> referencedVars(String predicate) {
     return inner.referencedVars(predicate);

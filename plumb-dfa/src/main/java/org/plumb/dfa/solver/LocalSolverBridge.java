@@ -104,6 +104,27 @@ public final class LocalSolverBridge implements SolverZ3Bridge {
   }
 
   /**
+   * {@inheritDoc}
+   *
+   * <p>The pure-Java bridge cannot answer this by evaluating: an identifier it was not given is a
+   * value it cannot produce, so the evaluation always ends in "satisfiable". So it answers with
+   * {@link FreeConstantSolver}, which decides the question the way the native bridge's Z3 does —
+   * over free integer constants, exactly for the shape the engine produces.
+   *
+   * <p>The two bridges therefore agree, and the engine's behaviour no longer depends on whether the
+   * machine has the native library.
+   */
+  @Override
+  public Result checkSatisfiable(String predicate) {
+    return switch (FreeConstantSolver.check(predicate)) {
+      case SAT -> Result.SAT;
+      case UNSAT -> Result.UNSAT;
+      // A shape this bridge cannot decide: the path might be reachable.
+      case UNKNOWN -> Result.UNKNOWN;
+    };
+  }
+
+  /**
    * Sentinel value for an unbound variable. The parser substitutes this for any identifier that
    * isn't in the bindings map. Comparisons involving the sentinel throw {@link
    * UnboundVariableException}, which {@link #check} translates to {@link Result#SAT} (the

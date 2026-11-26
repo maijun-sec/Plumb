@@ -49,6 +49,10 @@ import java.util.Set;
  * a real {@link com.microsoft.z3.Solver}. If the native Z3 lib is missing or the solver is
  * unreachable, the bridge falls back to {@link LocalSolverBridge}'s result so the caller never
  * blocks on a missing native lib.
+ *
+ * <p>The fallback is asked <b>the same question</b> the native bridge was asked, not the other kind
+ * of question this bridge can answer. Asking the other kind would make the engine's behaviour
+ * depend on whether the machine happens to have the native library — the same code, two answers.
  */
 public final class Z3Bridge implements SolverZ3Bridge {
 
@@ -67,6 +71,44 @@ public final class Z3Bridge implements SolverZ3Bridge {
     if (predicate == null || predicate.isBlank()) {
       return Result.SAT;
     }
+    Result nativeResult = nativeCheck(predicate, bindings == null ? Map.of() : bindings, false);
+    return nativeResult != null ? nativeResult : fallback.check(predicate, bindings);
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The native library already answers this question the way it is asked: an identifier it is
+   * not given becomes an integer CONSTANT ({@code mkIntConst}), and Z3 then decides whether the
+   * formula has a satisfying assignment.
+   *
+   * <p>When the native library is not available, the fallback is asked THE SAME QUESTION rather
+   * than the evaluation question — which is what makes the answer the same on a machine with the
+   * library and a machine without it. Falling back to {@code fallback.check} instead would answer
+   * "satisfiable" for every formula, and the engine's behaviour would depend on the machine.
+   */
+  @Override
+  public Result checkSatisfiable(String predicate) {
+    if (predicate == null || predicate.isBlank()) {
+      return Result.SAT;
+    }
+    Result nativeResult = nativeCheck(predicate, Map.of(), true);
+    return nativeResult != null ? nativeResult : fallback.checkSatisfiable(predicate);
+  }
+
+  /**
+   * The native library's answer, or {@code null} when it could not be asked.
+   *
+   * <p>{@code null} means "no answer from Z3": the library is missing, the context could not be
+   * created, or the predicate could not be parsed. The caller then decides what to do — the
+   * evaluation question falls back to evaluating, the satisfiability question falls back to the
+   * pure-Java decision.
+   *
+   * @param satisfiability whether the question is the SATISFIABILITY one; the EVALUATION question
+   *     cannot be answered for an identifier that was not given a value, and says so
+   */
+  private Result nativeCheck(
+      String predicate, Map<String, Object> bindings, boolean satisfiability) {
     try (Context ctx = new Context()) {
       Solver solver = ctx.mkSolver();
       Z3AstBuilder builder = new Z3AstBuilder(ctx, bindings);
@@ -74,9 +116,16 @@ public final class Z3Bridge implements SolverZ3Bridge {
       try {
         ast = builder.parse(predicate);
       } catch (Exception e) {
-        // Malformed input — fall back
-        // to the local solver.
-        return fallback.check(predicate, bindings);
+        // Malformed input — the caller falls back.
+        return null;
+      }
+      // The EVALUATION question needs a value for every identifier: one it was not given is a
+      // value this bridge cannot produce, so the predicate cannot be evaluated at all. The answer
+      // is "satisfiable", because the path might be reachable. The SATISFIABILITY question is
+      // different: an identifier it was not given is a FREE variable, and the question is whether
+      // some assignment of it satisfies the predicate.
+      if (!satisfiability && builder.sawUnboundIdentifier()) {
+        return Result.SAT;
       }
       solver.add(ast);
       Status s = solver.check();
@@ -94,10 +143,9 @@ public final class Z3Bridge implements SolverZ3Bridge {
       // Native Z3 not available
       // (ClassNotFoundException,
       // UnsatisfiedLinkError,
-      // Z3Exception, etc.) — fall back
-      // to the local solver so the
-      // caller is never blocked.
-      return fallback.check(predicate, bindings);
+      // Z3Exception, etc.) — no answer
+      // from the native library.
+      return null;
     }
   }
 
@@ -117,9 +165,37 @@ public final class Z3Bridge implements SolverZ3Bridge {
     private final Context ctx;
     private final java.util.Map<String, Object> bindings;
 
+    /**
+     * The free constants, ONE per name.
+     *
+     * <p>The map makes an invariant explicit: the identifier {@code x} is the SAME variable in
+     * every place it appears in one predicate, so {@code (x > 5) && (x < 3)} is a claim about one
+     * value and not about two.
+     *
+     * <p>What the map is <b>not</b> is a fix. {@code Context.mkIntConst} already shares same-name
+     * constants inside one context — measured: two calls return the same AST id, and a solver over
+     * two such calls refutes {@code (x > 5) && (x < 3)} — so this map is not load-bearing, and the
+     * mutation battery carries a control that says exactly that ({@code CONSTANTS-MAP-REDUNDANT}).
+     * It is kept because a reader of this file should not have to know Z3's hash-consing behaviour
+     * to know that the two comparisons are about one value.
+     *
+     * <p>The reason the engine never got this answer was not the constant: it never asked the
+     * question. See {@link org.plumb.dfa.taint.TaintedCheckerBase#isPathSuppressed}, which used to
+     * hand the solver only the pair of guards it had already decided arithmetically.
+     */
+    private final java.util.Map<String, IntExpr> freeConstants = new java.util.HashMap<>();
+
+    /** Whether the predicate named an identifier that was not given a value. */
+    private boolean sawUnboundIdentifier;
+
     Z3AstBuilder(Context ctx, java.util.Map<String, Object> bindings) {
       this.ctx = ctx;
       this.bindings = bindings;
+    }
+
+    /** Whether the predicate named an identifier that was not given a value. */
+    boolean sawUnboundIdentifier() {
+      return sawUnboundIdentifier;
     }
 
     BoolExpr parse(String predicate) {
@@ -275,8 +351,20 @@ public final class Z3Bridge implements SolverZ3Bridge {
         if (v instanceof String sv) {
           return ctx.mkInt(sv.length());
         }
-        return ctx.mkIntConst(tok);
+        // A free variable. It is the SAME variable everywhere it appears in this predicate, so it
+        // is looked up in the map rather than created afresh.
+        sawUnboundIdentifier = true;
+        return freeConstant(tok);
       }
+    }
+
+    /**
+     * The constant for a free variable, one per name.
+     *
+     * <p>See the field's javadoc: the same name is one variable throughout the predicate.
+     */
+    private IntExpr freeConstant(String name) {
+      return freeConstants.computeIfAbsent(name, ctx::mkIntConst);
     }
 
     private IntExpr asInt(Expr e) {

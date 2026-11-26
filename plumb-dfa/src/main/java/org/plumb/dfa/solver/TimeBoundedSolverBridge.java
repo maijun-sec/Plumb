@@ -129,6 +129,35 @@ public final class TimeBoundedSolverBridge implements SolverZ3Bridge, AutoClosea
     }
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * <p>The satisfiability question goes through the same timeout as the evaluation question: a
+   * query that does not come back in time is "cannot decide", and the caller reads that as "the
+   * path might be reachable".
+   */
+  @Override
+  public Result checkSatisfiable(String predicate) {
+    queryCount.incrementAndGet();
+    if (timeoutMs <= 0) {
+      return inner.checkSatisfiable(predicate);
+    }
+    Future<Result> f = executor.submit(() -> inner.checkSatisfiable(predicate));
+    try {
+      return f.get(timeoutMs, TimeUnit.MILLISECONDS);
+    } catch (TimeoutException te) {
+      timeoutCount.incrementAndGet();
+      f.cancel(true);
+      return Result.UNKNOWN;
+    } catch (InterruptedException ie) {
+      f.cancel(true);
+      Thread.currentThread().interrupt();
+      return Result.UNKNOWN;
+    } catch (java.util.concurrent.ExecutionException ee) {
+      return Result.UNKNOWN;
+    }
+  }
+
   @Override
   public Boolean implies(String antecedent, String consequent, Map<String, Object> bindings) {
     queryCount.incrementAndGet();

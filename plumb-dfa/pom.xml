@@ -799,6 +799,24 @@
                              PRECONDITION), and pins that the solver is asked about the
                              caller's own variable. -->
                         <include>org/plumb/dfa/solver/SolverPredicateFeedingTest.java</include>
+                        <!-- The solver's answer to the question a path condition
+                             actually asks. The condition handed over was the
+                             contradictory PAIR of the source's guards -- which the
+                             engine had already decided arithmetically -- and the
+                             question was the evaluation question, which the pure-Java
+                             bridge cannot decide for a free variable. So the solver
+                             contributed nothing to a taint rule, and the engine's
+                             behaviour depended on whether the machine had the native
+                             library. This test pins a contradiction that NO PAIR of
+                             guards can see (so only the solver can), pins that a
+                             solver answering "satisfiable" lets the finding through,
+                             and pins that the two bridges agree. -->
+                        <include>org/plumb/dfa/solver/SolverPathSatisfiabilityTest.java</include>
+                        <!-- The hard-case set: small programs the engine is supposed to judge a
+                             particular way, one checker and one rule per case, with a floor on
+                             the score so the work is measurable and a fix cannot be paid for
+                             with a regression. -->
+                        <include>org/plumb/dfa/hardcase/HardCaseSuiteTest.java</include>
                         <!-- The source-reading boundary: registering source paths
                              is metadata only, and the resolver root is capped.
                              Without this the consumer path silently walks a whole

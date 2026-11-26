@@ -5638,12 +5638,15 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (!pathVerificationEnabled()) return false;
     // The arithmetic contradiction first, and it does not go through the solver.
     //
-    // The solver CANNOT answer this question. Both bridges treat a variable that is not bound
-    // as free and answer SAT, which is the conservative answer they are designed to give:
-    // "the path might be reachable". A contradiction between two bounds is a statement about
-    // arithmetic, and arithmetic decides it exactly -- no quantifier over the variable's
-    // possible values is needed. So the contradiction is decided here, where the answer is
-    // exact, and the solver is left for the predicates it can actually evaluate.
+    // It is the cheap exact answer for the most common contradiction -- two bounds on the same
+    // variable that no value satisfies both -- and it needs no solver at all. But it is NOT the
+    // whole question: it compares the guards two at a time, and it ignores a guard that excludes
+    // a value (`!=`). So `x >= 5 && x <= 5 && x != 5` is no contradiction for it, while it is one
+    // for a solver that reads the conjunction as a whole.
+    //
+    // That is why the solver is asked too, below, and why it is asked the WHOLE path condition:
+    // giving it the contradictory pair alone would hand it the very question the arithmetic check
+    // has already answered, and its answer could only ever agree.
     if (sourceHasContradictoryGuards(av, ctx)) {
       return true;
     }
@@ -5651,7 +5654,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     String pc = pathConditionForSink(av, family, ins, ctx);
     String composed = composePathCondition(pc);
     if (composed.isEmpty()) return false;
-    SolverZ3Bridge.Result r = solverBridge.check(composed, java.util.Map.of());
+    // The SATISFIABILITY question, not the evaluation question: every identifier in the
+    // condition is a value the program has not pinned down, so the question is whether some
+    // assignment of values satisfies the condition. The two bridges answer it the same way, so
+    // the answer does not depend on whether this machine has the native solver.
+    SolverZ3Bridge.Result r = solverBridge.checkSatisfiable(composed);
     return r == SolverZ3Bridge.Result.UNSAT;
   }
 
@@ -5699,8 +5706,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     org.plumb.dfa.taint.GuardTracker tracker = ctx.functionGuards();
     if (tracker == null) return out;
     // The guards in force AT THE SINK. When the position is unknown (a checker used
-    // standalone, or a pre-pass that did not record positions) fall back to the
-    // function-wide union, which is what the engine always did before.
+    // standalone, or a pre-pass that did not record positions) there are NO guards: the
+    // function-wide union is not a substitute, because guards from different branches are not
+    // both in force at the sink.
     java.util.List<org.plumb.dfa.taint.GuardTracker.Guard> guards = pathScopedGuards(tracker, ctx);
     if (guards == null || guards.isEmpty()) return out;
     for (org.plumb.dfa.taint.GuardTracker.Guard g : guards) {
@@ -5716,9 +5724,13 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   /**
    * The guards in force at the sink, or {@code null} when the position is not known.
    *
-   * <p>{@code null} means "fall back to the function-wide union" — which is the old behaviour, and
-   * is the safe one, because it is a SUPERSET of the path-scoped guards and therefore never
-   * suppresses a finding the path-scoped set would have reported.
+   * <p>{@code null} means "the position is unknown", and the caller reads that as <b>no guards</b>
+   * — not as "the function's whole guard set". The two are very different, and the difference is
+   * the difference between a sound answer and a wrong one: the guards of a function are recorded on
+   * branches, and two of them from different branches are not both in force at the sink. Conjoining
+   * them can make a path look unreachable that is perfectly reachable.
+   *
+   * <p>So when the position is unknown there is no path condition, and the finding stands.
    */
   private java.util.List<org.plumb.dfa.taint.GuardTracker.Guard> pathScopedGuards(
       org.plumb.dfa.taint.GuardTracker tracker, AnalysisContext ctx) {
@@ -5732,21 +5744,24 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * The path condition built from the guards proved about the SOURCE variable, or {@code null} when
    * there is nothing to say.
    *
-   * <p>The condition is a contradiction between two guards on the source variable: {@code n > 5}
-   * and {@code n < 3} cannot both hold, so a flow that needs both describes a path that does not
-   * exist.
+   * <p>The condition is the conjunction of EVERY guard in force at the sink on the source variable
+   * — not just a contradictory pair of them.
    *
-   * <p>It is reported as a predicate so the reader of a finding can see WHY the finding was
-   * suppressed. The decision itself is made arithmetically, in {@link #isPathSuppressed}, because
-   * the solver deliberately answers SAT for a variable it cannot bind.
+   * <p>That is the point of the change. The solver is asked "is this path reachable?", and the
+   * question it can answer is about the whole condition: a solver reads a conjunction as a whole,
+   * so it sees contradictions that no pairwise comparison sees. {@code x >= 5 && x <= 5 && x != 5}
+   * is one: no single pair of those guards conflicts, but no value satisfies all three.
+   *
+   * <p>Handing the solver only the contradictory pair — which is what this used to do — handed it
+   * the very question the arithmetic check had already answered, so its answer could only ever
+   * agree, and the solver contributed nothing to the decision.
+   *
+   * <p>The condition is also what the finding shows: it is the path condition that was checked and
+   * found satisfiable, which is the fact a reader of the finding needs.
    */
   private String guardPathCondition(TacOperand.TacVar arg, AnalysisContext ctx) {
-    org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact[] conflict =
-        org.plumb.dfa.solver.GuardPredicateTranslator.findContradiction(sourceGuardFacts(arg, ctx));
-    if (conflict == null) return null;
     String condition =
-        org.plumb.dfa.solver.GuardPredicateTranslator.conjunction(
-            java.util.List.of(conflict[0], conflict[1]));
+        org.plumb.dfa.solver.GuardPredicateTranslator.conjunction(sourceGuardFacts(arg, ctx));
     return condition.isEmpty() ? null : condition;
   }
 
@@ -5961,25 +5976,25 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // The solver, and the arithmetic, are both asked. Either one deciding that the
       // conjunction is unsatisfiable is enough to conclude that the callee throws here.
       //
-      // The solver is the exact answer, when it is there. The arithmetic is the portable one:
-      // the pure-Java fallback bridge treats a variable it cannot bind as free and answers
-      // "satisfiable", so on a machine without the Z3 native library the solver would never see
-      // this contradiction at all. A contradiction between two bounds on the SAME variable is a
-      // statement about arithmetic, and interval arithmetic decides it exactly.
+      // Both questions are SATISFIABILITY questions -- every identifier in them stands for a
+      // value the program has not pinned down -- so they are asked as such, through
+      // checkSatisfiable. The arithmetic is the portable one: a contradiction between two bounds
+      // on the SAME variable is a statement about arithmetic, and interval arithmetic decides it
+      // exactly. The solver now decides the same shapes exactly as well, so the answer does not
+      // depend on whether this machine has the native library.
       String alternativesCondition = "(" + String.join(") || (", alternatives) + ")";
       // The alternatives must be satisfiable on their own. A vacuous disjunction would make
       // EVERY call look like a throwing call, which would be a false suppression.
       boolean alternativesSatisfiable = true;
       for (String alternative : alternatives) {
-        if (solverBridge.check("(" + alternative + ")", java.util.Map.of())
-            == SolverZ3Bridge.Result.UNSAT) {
+        if (solverBridge.checkSatisfiable("(" + alternative + ")") == SolverZ3Bridge.Result.UNSAT) {
           alternativesSatisfiable = false;
           break;
         }
       }
       if (!alternativesSatisfiable) continue;
       String composed = "(" + alternativesCondition + ") && (" + callerCondition + ")";
-      if (solverBridge.check(composed, java.util.Map.of()) == SolverZ3Bridge.Result.UNSAT) {
+      if (solverBridge.checkSatisfiable(composed) == SolverZ3Bridge.Result.UNSAT) {
         return true;
       }
       for (List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> alternative :
