@@ -6,6 +6,12 @@
 # The judge runs each program with ONLY the named checker, counts the findings
 # of the named rule, and compares the count with `expect`.
 #
+# The optional seventh column names a YAML file next to the program: the case
+# is judged under that configuration instead of the defaults. A case that needs
+# the project's own configuration -- a sanitizer the project declares, say --
+# carries it, because a case judged under configuration it does not have would
+# measure the wrong thing.
+#
 # `status` is the ratchet:
 #   closed  the engine gets this right today, so it MUST keep getting it right
 #   open    the engine gets this wrong today -- it is the work list
@@ -18,7 +24,7 @@
 fs-reassign-const        SqlInjectionChecker     dfa-taint-sql-injection          NO_FINDING   flow       open
 fs-field-reassign        SqlInjectionChecker     dfa-taint-sql-injection          NO_FINDING   flow       open
 fs-branch-both-clean     SqlInjectionChecker     dfa-taint-sql-injection          NO_FINDING   flow       open
-fs-user-sanitizer        SqlInjectionChecker     dfa-taint-sql-injection          NO_FINDING   flow       open
+fs-user-sanitizer        SqlInjectionChecker     dfa-taint-sql-injection          NO_FINDING   flow       closed fs-user-sanitizer.sanitizers.yaml
 fs-param-reassign        SqlInjectionChecker     dfa-taint-sql-injection          NO_FINDING   flow       open
 fs-branch-one-dirty      SqlInjectionChecker     dfa-taint-sql-injection          FINDING      flow       closed
 pt-field-cross-method    SqlInjectionChecker     dfa-taint-sql-injection          FINDING      points-to  closed

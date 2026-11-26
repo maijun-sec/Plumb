@@ -173,6 +173,10 @@
                              what the report says about what it did not look at. -->
                         <include>org/plumb/dfa/engine/ModuleScopeTest.java</include>
                         <include>org/plumb/dfa/config/ConfigLoaderTest.java</include>
+                        <!-- The project's own sanitizers: a project declares its own trust
+                             boundaries, and a declared sanitizer has to win over the callee's
+                             summary -- otherwise the summary puts the taint straight back. -->
+                        <include>org/plumb/dfa/config/SanitizerConfigTest.java</include>
                         <!-- The language filter is a LOAD-TIME filter: the families,
                              patterns and checkers of the languages that were not
                              selected must never be registered. -->

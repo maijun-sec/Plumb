@@ -1,0 +1,25 @@
+# The project's own sanitizers.
+#
+# A "sanitizer" is a method whose return value is provably clean whatever the
+# taint of its input is: an escaping helper, a validator, a canonicaliser. The
+# engine has a built-in list of the standard library's trust boundaries, but a
+# project has trust boundaries of its own and the engine cannot know them -- so
+# the project declares them here.
+#
+# Each entry matches the callee signature (the FQN.method/arity form) with a
+# regular expression, matched against the WHOLE signature.
+#
+#   - id:      a stable name for the entry
+#     match:   the regular expression
+#     enabled: false turns the entry off without removing it
+#
+# The built-in list is NOT repeated here: this table ADDS to it.
+#
+# Example -- a project that escapes HTML before storing it:
+#
+#   sanitizers:
+#     - id: html-escape
+#       match: '^com\.example\.web\.Html\.escape/1$'
+#       enabled: true
+
+sanitizers: []

@@ -30,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -94,13 +95,25 @@ class HardCaseSuiteTest {
    *
    * <p>It is the number of cases the engine gets right today. It only ever goes up.
    */
-  private static final int FLOOR = 9;
+  private static final int FLOOR = 10;
 
   private static final String MANIFEST = "/hardcases/manifest.tsv";
 
-  /** One case: the program, the rule it is about, and the verdict it deserves. */
+  /**
+   * One case: the program, the rule it is about, and the verdict it deserves.
+   *
+   * <p>{@code config} is the name of a YAML file next to the program, or empty. A case that needs
+   * the project's own configuration -- a sanitizer the project declares, say -- carries it, because
+   * a case judged under configuration it does not have would measure the wrong thing.
+   */
   private record Case(
-      String id, String checker, String rule, String expect, String family, String status) {}
+      String id,
+      String checker,
+      String rule,
+      String expect,
+      String family,
+      String status,
+      String config) {}
 
   @TempDir Path tmp;
 
@@ -183,7 +196,8 @@ class HardCaseSuiteTest {
       assertThat(cols.length)
           .as("the manifest line is complete: " + line)
           .isGreaterThanOrEqualTo(6);
-      out.add(new Case(cols[0], cols[1], cols[2], cols[3], cols[4], cols[5]));
+      String config = cols.length > 6 ? cols[6] : "";
+      out.add(new Case(cols[0], cols[1], cols[2], cols[3], cols[4], cols[5], config));
     }
     return out;
   }
@@ -196,7 +210,7 @@ class HardCaseSuiteTest {
     Files.writeString(file, source, StandardCharsets.UTF_8);
 
     DfaChecker checker = newChecker(c.checker());
-    EngineConfig config = ConfigLoader.loadFromClasspath();
+    EngineConfig config = configFor(c);
     DfaEngine engine = new DfaEngine(config, List.of(checker), "cha", null);
     ParsedSource parsed = new JavaSourceParser().parse(file);
     TacProgram program = new TacTranslator(parsed).translate();
@@ -207,6 +221,24 @@ class HardCaseSuiteTest {
       if (c.rule().equals(f.ruleId())) count++;
     }
     return count;
+  }
+
+  /**
+   * The engine configuration the case is judged under.
+   *
+   * <p>The defaults, plus whatever the case's own configuration file replaces. The file is copied
+   * out of the classpath first, because the loader's override is a PATH -- a resource inside a jar
+   * is not one.
+   */
+  private EngineConfig configFor(Case c) throws Exception {
+    if (c.config() == null || c.config().isEmpty()) {
+      return ConfigLoader.loadFromClasspath();
+    }
+    String text = resourceText("/hardcases/" + c.config());
+    assertThat(text).as("the configuration of case " + c.id() + " is on the classpath").isNotNull();
+    Path file = tmp.resolve(c.id() + ".sanitizers.yaml");
+    Files.writeString(file, text, StandardCharsets.UTF_8);
+    return ConfigLoader.loadFromClasspath(Map.of("sanitizers.yaml", file));
   }
 
   private DfaChecker newChecker(String simpleName) throws Exception {

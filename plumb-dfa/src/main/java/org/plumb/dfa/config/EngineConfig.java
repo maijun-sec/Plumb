@@ -73,6 +73,14 @@ public final class EngineConfig {
    */
   private final ArgumentPassthrough argumentPassthrough;
 
+  /**
+   * The sanitizers the PROJECT declares.
+   *
+   * <p>Never {@code null}: a configuration with no declared sanitizer gets an empty table, so a
+   * checker can always ask and get an answer.
+   */
+  private final SanitizerConfig sanitizers;
+
   public EngineConfig(
       SinkFamilyRegistry sinkFamilies,
       FactKindRegistry factKinds,
@@ -153,6 +161,32 @@ public final class EngineConfig {
       ReceiverPassthrough receiverPassthrough,
       org.plumb.dfa.semantics.LanguageSemanticsRegistry languageSemantics,
       ArgumentPassthrough argumentPassthrough) {
+    this(
+        sinkFamilies,
+        factKinds,
+        checkers,
+        cweMappings,
+        tuning,
+        receiverPassthrough,
+        languageSemantics,
+        argumentPassthrough,
+        SanitizerConfig.empty());
+  }
+
+  /**
+   * The full constructor: the two passthrough tables, the language semantics and the project's own
+   * sanitizers.
+   */
+  public EngineConfig(
+      SinkFamilyRegistry sinkFamilies,
+      FactKindRegistry factKinds,
+      CheckerRegistry checkers,
+      Map<String, String> cweMappings,
+      TuningConfig tuning,
+      ReceiverPassthrough receiverPassthrough,
+      org.plumb.dfa.semantics.LanguageSemanticsRegistry languageSemantics,
+      ArgumentPassthrough argumentPassthrough,
+      SanitizerConfig sanitizers) {
     this.sinkFamilies = Objects.requireNonNull(sinkFamilies, "sinkFamilies");
     this.factKinds = Objects.requireNonNull(factKinds, "factKinds");
     this.checkers = Objects.requireNonNull(checkers, "checkers");
@@ -166,6 +200,7 @@ public final class EngineConfig {
             : languageSemantics;
     this.argumentPassthrough =
         argumentPassthrough == null ? ArgumentPassthrough.empty() : argumentPassthrough;
+    this.sanitizers = sanitizers == null ? SanitizerConfig.empty() : sanitizers;
   }
 
   /**
@@ -345,6 +380,29 @@ public final class EngineConfig {
         tuning,
         receiverPassthrough,
         languageSemantics,
+        table);
+  }
+
+  /**
+   * The sanitizers the project declares.
+   *
+   * <p>Never {@code null}.
+   */
+  public SanitizerConfig sanitizers() {
+    return sanitizers;
+  }
+
+  /** The same configuration with a different sanitizer table. */
+  public EngineConfig withSanitizers(SanitizerConfig table) {
+    return new EngineConfig(
+        sinkFamilies,
+        factKinds,
+        checkers,
+        cweMappings,
+        tuning,
+        receiverPassthrough,
+        languageSemantics,
+        argumentPassthrough,
         table);
   }
 }

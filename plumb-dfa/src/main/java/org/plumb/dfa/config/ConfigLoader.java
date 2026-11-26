@@ -66,7 +66,12 @@ public final class ConfigLoader {
   private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(ConfigLoader.class);
 
   private static final String[] FILES = {
-    "sink-families.yaml", "fact-kinds.yaml", "checkers.yaml", "cwe-mappings.yaml", "tuning.yaml",
+    "sink-families.yaml",
+    "fact-kinds.yaml",
+    "checkers.yaml",
+    "cwe-mappings.yaml",
+    "tuning.yaml",
+    "sanitizers.yaml",
   };
 
   /**
@@ -99,7 +104,8 @@ public final class ConfigLoader {
     Map<String, Object> tunYaml = loadYamlFromClasspath("tuning.yaml", overrides);
     Map<String, Object> rcvYaml = loadYamlFromClasspath("receiver-passthrough.yaml", overrides);
     Map<String, Object> argYaml = loadYamlFromClasspath("argument-passthrough.yaml", overrides);
-    return build(sinkYaml, kindYaml, chkYaml, cweYaml, tunYaml, rcvYaml, argYaml);
+    Map<String, Object> sanYaml = loadYamlFromClasspath("sanitizers.yaml", overrides);
+    return build(sinkYaml, kindYaml, chkYaml, cweYaml, tunYaml, rcvYaml, argYaml, sanYaml);
   }
 
   /**
@@ -115,7 +121,8 @@ public final class ConfigLoader {
     Map<String, Object> tunYaml = loadYamlFromFile(yamlDir.resolve("tuning.yaml"));
     Map<String, Object> rcvYaml = loadYamlFromFile(yamlDir.resolve("receiver-passthrough.yaml"));
     Map<String, Object> argYaml = loadYamlFromFile(yamlDir.resolve("argument-passthrough.yaml"));
-    return build(sinkYaml, kindYaml, chkYaml, cweYaml, tunYaml, rcvYaml, argYaml);
+    Map<String, Object> sanYaml = loadYamlFromFile(yamlDir.resolve("sanitizers.yaml"));
+    return build(sinkYaml, kindYaml, chkYaml, cweYaml, tunYaml, rcvYaml, argYaml, sanYaml);
   }
 
   @SuppressWarnings("unchecked")
@@ -126,7 +133,8 @@ public final class ConfigLoader {
       Map<String, Object> cweYaml,
       Map<String, Object> tunYaml,
       Map<String, Object> rcvYaml,
-      Map<String, Object> argYaml) {
+      Map<String, Object> argYaml,
+      Map<String, Object> sanYaml) {
     SinkFamilyRegistry families = parseSinkFamilies(sinkYaml);
     FactKindRegistry kinds = parseFactKinds(kindYaml);
     CheckerRegistry checkers = parseCheckers(chkYaml);
@@ -134,6 +142,7 @@ public final class ConfigLoader {
     TuningConfig tuning = parseTuning(tunYaml);
     ReceiverPassthrough receiverPassthrough = parseReceiverPassthrough(rcvYaml);
     ArgumentPassthrough argumentPassthrough = parseArgumentPassthrough(argYaml);
+    SanitizerConfig sanitizers = parseSanitizers(sanYaml);
     return new EngineConfig(
         families,
         kinds,
@@ -142,7 +151,60 @@ public final class ConfigLoader {
         tuning,
         receiverPassthrough,
         org.plumb.dfa.semantics.LanguageSemanticsRegistry.withDefaults(),
-        argumentPassthrough);
+        argumentPassthrough,
+        sanitizers);
+  }
+
+  /**
+   * Parse {@code sanitizers.yaml}: the sanitizers the project declares.
+   *
+   * <p>YAML shape:
+   *
+   * <pre>
+   *   sanitizers:
+   *     - id: html-escape
+   *       match: '^com\.example\.Html\.escape/1$'
+   *       enabled: true
+   * </pre>
+   *
+   * <p>An entry without a {@code match} is skipped rather than guessed at: a sanitizer that matches
+   * everything would silence every taint rule in the project.
+   */
+  @SuppressWarnings("unchecked")
+  private static SanitizerConfig parseSanitizers(Map<String, Object> yaml) {
+    if (yaml == null || yaml.isEmpty()) {
+      return SanitizerConfig.empty();
+    }
+    Object raw = yaml.get("sanitizers");
+    if (!(raw instanceof List)) {
+      return SanitizerConfig.empty();
+    }
+    List<SanitizerConfig.Entry> out = new ArrayList<>();
+    int index = 0;
+    for (Object item : (List<Object>) raw) {
+      index++;
+      if (!(item instanceof Map)) {
+        continue;
+      }
+      Map<String, Object> spec = (Map<String, Object>) item;
+      Object matchText = spec.get("match");
+      if (!(matchText instanceof String s) || s.isBlank()) {
+        LOG.warn("sanitizers.yaml entry #{} has no 'match'; skipped", index);
+        continue;
+      }
+      Pattern pattern;
+      try {
+        pattern = Pattern.compile(s);
+      } catch (RuntimeException e) {
+        LOG.warn("sanitizers.yaml entry #{} has an invalid 'match' regex; skipped", index);
+        continue;
+      }
+      Object idText = spec.get("id");
+      String id = idText instanceof String idStr ? idStr : ("sanitizer-" + index);
+      boolean enabled = !Boolean.FALSE.equals(spec.get("enabled"));
+      out.add(new SanitizerConfig.Entry(id, pattern, enabled));
+    }
+    return SanitizerConfig.of(out);
   }
 
   /**

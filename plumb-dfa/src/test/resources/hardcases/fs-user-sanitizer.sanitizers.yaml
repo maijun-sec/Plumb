@@ -1,0 +1,22 @@
+# The sanitizer this case's project declares.
+#
+# The case's program cleans its input with a method of its own, so the engine
+# has to be told that this method returns a clean value. The engine's built-in
+# list covers the standard library's trust boundaries; this file covers the
+# project's.
+#
+# The pattern is matched against the callee signature AS THE ENGINE RECORDS IT.
+# That signature carries the owner only when the call is QUALIFIED: a call
+# written `Probe.staticClean(x)` is recorded as `Probe.staticClean/1`, while the
+# same call written `staticClean(x)` is recorded as `staticClean/1` -- the owner
+# is not resolved. So a declaration that must cover both forms spells the owner
+# optional, and a declaration that must NOT match another class's method of the
+# same name has to be matched against the qualified form only.
+#
+# Measured: `this.instClean(x)` and `Probe.instClean(x)` both record the owner;
+# `instClean(x)` and `staticClean(x)` do not.
+
+sanitizers:
+  - id: fs-user-sanitizer-escape
+    match: '^(?:[\w.]+\.)?sanitize/1$'
+    enabled: true

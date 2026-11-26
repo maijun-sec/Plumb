@@ -1458,7 +1458,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // call is itself an input-source call so
         // the input-source label survives and
         // downstream numeric-taint sinks fire.
-        if (isSanitizer(ins.calleeSig)
+        if (isSanitizer(ins.calleeSig, ctx)
             && ins.dest instanceof TacOperand.TacVar sanDv
             && !isInputSourceCall(ins.calleeSig, ctx)) {
           taintedVars.remove(sanDv);
@@ -2189,6 +2189,31 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   }
 
   /**
+   * Whether the callee is a sanitizer: the built-in list, plus the ones the project declares.
+   *
+   * <p>The built-in list is the engine's knowledge about the standard library (see {@link
+   * #isBuiltinSanitizer}). A project has trust boundaries of its own -- its own escaping helper,
+   * its own validator -- and the engine cannot know them, so the project declares them in {@code
+   * sanitizers.yaml} and the table reaches the checker through the engine configuration.
+   *
+   * <p>The two are ADDITIVE: the built-in list is not the project's to turn off, because it is
+   * knowledge about the standard library rather than about this project.
+   */
+  private boolean isSanitizer(String calleeSig, AnalysisContext ctx) {
+    if (isBuiltinSanitizer(calleeSig)) {
+      return true;
+    }
+    if (ctx == null) {
+      return false;
+    }
+    org.plumb.dfa.config.EngineConfig cfg = ctx.config();
+    if (cfg == null || cfg.sanitizers() == null) {
+      return false;
+    }
+    return cfg.sanitizers().isSanitizer(calleeSig);
+  }
+
+  /**
    * Sanitizer check. A "sanitizer" is a function whose return value is provably CLEAN regardless of
    * input taint. The classic example is {@code Integer.parseInt(String)}: the input is a tainted
    * String but the return is a bounded int. Adding sanitizers to this list eliminates false
@@ -2198,7 +2223,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * TacTranslator.methodSig}). Adding an entry is a deliberate decision: only add methods that have
    * a documented trust boundary (parse / validate / whitelist / canonicalize).
    */
-  private static boolean isSanitizer(String calleeSig) {
+  private static boolean isBuiltinSanitizer(String calleeSig) {
     if (calleeSig == null) return false;
     // Integer / Long / Short / Byte / Float /
     // Double / Boolean : primitive parse
@@ -2760,7 +2785,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // even if the input was tainted. Missing sanitizers
     // on Integer.parseInt have been observed to fire FP
     // findings.
-    if (isSanitizer(calleeSig)) {
+    if (isSanitizer(calleeSig, ctx)) {
       // skip when the call is itself
       // an input-source. The input-source
       // seeding on line ~556 put `input:parseInt`
@@ -6158,6 +6183,17 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private void propagateTaintFromCalleeSummary(TacInstruction ins, AnalysisContext ctx) {
     String calleeSig = ins.calleeSig;
     if (calleeSig == null) return;
+    // A declared sanitizer's result is CLEAN by declaration.
+    //
+    // The short-circuit earlier in this instruction's handling cleared the dest. Without this,
+    // the callee's own summary would put the taint straight back: the summary says "this method
+    // propagates its parameter's taint to its return value", which is true of the callee's body
+    // and irrelevant here -- the project has declared that the value which comes out is clean.
+    //
+    // The built-in sanitizers never hit this, because they are standard-library methods with no
+    // summary of their own. A project's own sanitizer always has one, so this is where a
+    // declared sanitizer would otherwise be defeated.
+    if (isSanitizer(calleeSig, ctx)) return;
     // The cross-function folding depth. At zero the analysis stays inside one function: a
     // callee's facts never reach its callers, and every finding is about an intra-procedural
     // flow. That is the setting the report's claims can be checked against.
