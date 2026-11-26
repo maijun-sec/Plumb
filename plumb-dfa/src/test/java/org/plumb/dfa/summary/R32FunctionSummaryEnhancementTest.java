@@ -118,9 +118,9 @@ class R32FunctionSummaryEnhancementTest {
 
   @Test
   void fieldOpRejectsNegativeSourceParamIndex() {
-    // -1 is the documented NON_PARAM_SOURCE sentinel;
-    // anything below -1 is invalid.
-    assertThrows(IllegalArgumentException.class, () -> new FieldOp("data", -2));
+    // -1 is the documented NON_PARAM_SOURCE sentinel and -2 is the documented
+    // CLEAN_SOURCE sentinel; anything below the lowest sentinel is invalid.
+    assertThrows(IllegalArgumentException.class, () -> new FieldOp("data", -3));
     assertThrows(IllegalArgumentException.class, () -> new FieldOp("data", -100));
   }
 
@@ -130,6 +130,18 @@ class R32FunctionSummaryEnhancementTest {
     FieldOp op = new FieldOp("data", FieldOp.NON_PARAM_SOURCE);
     assertEquals(FieldOp.NON_PARAM_SOURCE, op.sourceParamIndex());
     assertFalse(op.hasParamSource());
+  }
+
+  @Test
+  void fieldOpAcceptsNegativeTwoAsCleanSource() {
+    // -2 is the documented "the written value carries no taint" sentinel. It is a
+    // DIFFERENT statement from NON_PARAM_SOURCE, and the difference is load-bearing:
+    // a caller that sees CLEAN_SOURCE knows the field holds a clean value.
+    FieldOp op = new FieldOp("data", FieldOp.CLEAN_SOURCE);
+    assertEquals(FieldOp.CLEAN_SOURCE, op.sourceParamIndex());
+    assertFalse(op.hasParamSource());
+    assertTrue(op.isCleanSource());
+    assertEquals("data", op.fieldName());
   }
 
   @Test

@@ -63,21 +63,47 @@ public record FieldOp(String fieldName, int sourceParamIndex) {
   /** Sentinel: source is NOT a parameter. */
   public static final int NON_PARAM_SOURCE = -1;
 
+  /**
+   * Sentinel: the written value carries NO taint.
+   *
+   * <p>It is a different statement from {@link #NON_PARAM_SOURCE}, and the difference is the whole
+   * point of this constant. {@code NON_PARAM_SOURCE} means "the source is not a parameter" -- a
+   * tainted local, a call's return value -- so the caller cannot tell what the field holds now.
+   * {@code CLEAN_SOURCE} means the value carries no taint at all: a literal. A caller that sees it
+   * knows the field holds a clean value, which is a fact it can act on.
+   *
+   * <p>Before this constant existed, a clean write was simply absent from the summary -- and an
+   * absent entry is not a clean one. The caller fell back on the class-level answer, which names
+   * the CLASS rather than the object, and reported a taint that the callee's own write had removed.
+   */
+  public static final int CLEAN_SOURCE = -2;
+
   public FieldOp {
     Objects.requireNonNull(fieldName, "fieldName");
     if (fieldName.isEmpty()) {
       throw new IllegalArgumentException("fieldName must be non-empty");
     }
-    if (sourceParamIndex < NON_PARAM_SOURCE) {
-      throw new IllegalArgumentException("sourceParamIndex must be >= -1, got " + sourceParamIndex);
+    if (sourceParamIndex < CLEAN_SOURCE) {
+      throw new IllegalArgumentException("sourceParamIndex must be >= -2, got " + sourceParamIndex);
     }
   }
 
   /**
-   * Convenience: a field write from a non-parameter source (a local computation, a constant, etc.).
+   * Convenience: a field write from a non-parameter source (a local computation, a call return
+   * value, etc.).
    */
   public static FieldOp fromLocalSource(String fieldName) {
     return new FieldOp(fieldName, NON_PARAM_SOURCE);
+  }
+
+  /**
+   * Convenience: a field write whose value carries no taint (a literal).
+   *
+   * @param fieldName the field being written
+   * @return the field op
+   */
+  public static FieldOp fromCleanSource(String fieldName) {
+    return new FieldOp(fieldName, CLEAN_SOURCE);
   }
 
   /** Convenience: a field write from a parameter. */
@@ -93,5 +119,14 @@ public record FieldOp(String fieldName, int sourceParamIndex) {
    */
   public boolean hasParamSource() {
     return sourceParamIndex >= 0;
+  }
+
+  /**
+   * Whether the written value carries no taint.
+   *
+   * @return {@code true} iff this is a clean write
+   */
+  public boolean isCleanSource() {
+    return sourceParamIndex == CLEAN_SOURCE;
   }
 }

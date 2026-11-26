@@ -4153,6 +4153,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // never written -- and does not fall back on the class-level answer, which belongs to
       // a different function's write.
       recordCleanFieldWrite(ins, fn, recv, recvName, ctx);
+      // The SUMMARY has to carry the clean write too. Without it the caller has no way to
+      // learn that the field was overwritten with a literal: an absent entry is not a clean
+      // one, and the caller would fall back on the class-level answer -- which names the
+      // CLASS, not the object -- and report a taint that this write removed.
+      fieldOps.add(FieldOp.fromCleanSource(ins.fieldName));
       return;
     }
     // Find the source param index for
@@ -4517,6 +4522,51 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     List<org.plumb.tac.ir.TacAccessPath> paths;
     try {
       paths = AccessPathBuilder.fieldPaths(solver, fn.signature(), recv, ins.fieldName);
+    } catch (RuntimeException e) {
+      // A points-to query that fails costs the refinement, not the analysis.
+      return;
+    }
+    for (org.plumb.tac.ir.TacAccessPath path : paths) {
+      accessPathTaintStore.clear(path);
+    }
+  }
+
+  /**
+   * Apply a clean field write that a CALLEE performed, to the caller's own state.
+   *
+   * <p><b>Why this exists.</b> A field read consults three answers, in order: the
+   * location-sensitive one, the coarse per-function one, and the class-level one. The class-level
+   * answer names the CLASS, not the object, so it carries whatever ANY function wrote to that
+   * field. When the callee overwrites the field with a literal, the class-level answer is stale for
+   * the caller's object -- and a read that fell through to it would report a taint that the
+   * callee's own write removed.
+   *
+   * <p>Before this, the callee's clean write was simply absent from its summary, and an absent
+   * entry is not a clean one: the caller could not tell "overwritten with a literal" from "never
+   * written", so it consulted the class-level answer and reported.
+   *
+   * <p><b>What it does not do.</b> It does not touch the class-level state itself. That state is
+   * program-wide, and another function's write may be the one that matters there; removing it here
+   * would delete a taint that is still live for a different object. The clean write is recorded per
+   * function, and the read consults it.
+   *
+   * @param fieldName the field the callee overwrote
+   * @param recvName the receiver in the caller (e.g. {@code "this"})
+   * @param recv the receiver as an operand, or {@code null} when the IR dropped it
+   * @param fn the calling function
+   * @param ctx the analysis context
+   */
+  private void applyCleanCalleeFieldWrite(
+      String fieldName, String recvName, TacOperand recv, TacFunction fn, AnalysisContext ctx) {
+    if (fieldName == null || fieldName.isEmpty()) return;
+    if (recvName == null || recvName.isEmpty()) return;
+    fieldTaintTracker.recordCleanWrite(recvName, fieldName);
+    fieldTaintTracker.clearField(recvName, fieldName);
+    org.plumb.dfa.points.PointsToSolver solver = ctx == null ? null : ctx.pointsToSolver();
+    if (solver == null || recv == null || fn == null) return;
+    List<org.plumb.tac.ir.TacAccessPath> paths;
+    try {
+      paths = AccessPathBuilder.fieldPaths(solver, fn.signature(), recv, fieldName);
     } catch (RuntimeException e) {
       // A points-to query that fails costs the refinement, not the analysis.
       return;
@@ -7416,9 +7466,14 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     //     back to "this"
     if (!calleeSummary.fieldOps().isEmpty()) {
       String recvName = "this";
+      // The receiver as an OPERAND, for the location-sensitive answers. It is null when the
+      // IR builder dropped the receiver (a same-class call on the implicit self), and the
+      // location-sensitive answers then simply have no path to clear.
+      TacOperand recvOperand = null;
       if (ins.args != null
           && !ins.args.isEmpty()
           && ins.args.get(0) instanceof TacOperand.TacVar recvVar) {
+        recvOperand = recvVar;
         String n = recvVar.name();
         TacType t = recvVar.type();
         if ("this".equals(n)) {
@@ -7463,6 +7518,16 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       }
       for (FieldOp fop : calleeSummary.fieldOps()) {
         int sourceParamIndex = fop.sourceParamIndex();
+        if (sourceParamIndex == FieldOp.CLEAN_SOURCE) {
+          // The callee overwrote the field with a value that carries no taint. The caller's
+          // object holds that clean value now, so the class-level answer -- which names the
+          // CLASS, not the object -- is stale for it. The caller records the clean write the
+          // same way a local clean write is recorded, and a later read consults it instead of
+          // falling back on the class-level answer.
+          applyCleanCalleeFieldWrite(
+              fop.fieldName(), recvName, recvOperand, ctx.currentFunction(), ctx);
+          continue;
+        }
         if (sourceParamIndex < 0) continue;
         // Try the conventional
         // {@code sourceParamIndex + 1}

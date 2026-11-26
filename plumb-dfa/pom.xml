@@ -214,6 +214,10 @@
                              overwrote is clean where the arms meet, and one
                              arm that did not is enough to keep the taint. -->
                         <include>org/plumb/dfa/taint/BranchJoinTaintTest.java</include>
+                        <!-- A field that another method overwrites with a
+                             literal: the caller that reads it sees the
+                             literal, not the class-level answer. -->
+                        <include>org/plumb/dfa/taint/CrossMethodFieldCleanWriteTest.java</include>
                         <!-- The Go sink catalogue: the Go front end's symbols must
                              be the ones the catalogue names, and the Go
                              accumulators must carry the taint both ways. -->

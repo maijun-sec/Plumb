@@ -28,7 +28,7 @@ fs-user-sanitizer        SqlInjectionChecker     dfa-taint-sql-injection        
 fs-param-reassign        SqlInjectionChecker     dfa-taint-sql-injection          NO_FINDING   flow       closed
 fs-branch-one-dirty      SqlInjectionChecker     dfa-taint-sql-injection          FINDING      flow       closed
 pt-field-cross-method    SqlInjectionChecker     dfa-taint-sql-injection          FINDING      points-to  closed
-pt-field-overwritten-cross-method SqlInjectionChecker dfa-taint-sql-injection      NO_FINDING   points-to  open
+pt-field-overwritten-cross-method SqlInjectionChecker dfa-taint-sql-injection      NO_FINDING   points-to  closed
 pt-array-element-taint   SqlInjectionChecker     dfa-taint-sql-injection          FINDING      points-to  closed
 pt-return-value-taint    SqlInjectionChecker     dfa-taint-sql-injection          FINDING      points-to  closed
 cs-bounds-contradiction  UncontrolledMemAllocChecker dfa-taint-uncontrolled-mem-alloc NO_FINDING constraint closed
