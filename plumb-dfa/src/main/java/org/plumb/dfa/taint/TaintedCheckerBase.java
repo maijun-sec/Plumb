@@ -880,6 +880,18 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private final ValueAliasTracker valueAliases = new ValueAliasTracker();
 
   /**
+   * Per accumulator: the names of the values that went INTO it.
+   *
+   * <p>An accumulator's state keeps a taint LABEL, and a label says nothing about the value — so a
+   * reader of the accumulator cannot tell that the value it reads back is the value a guard talks
+   * about. The names are what carry that, and they are what lets the path condition reach a sink
+   * whose argument is the element read out of the container.
+   *
+   * <p>Cleared at every function boundary, like the other per-function trackers.
+   */
+  private final Map<String, java.util.Set<String>> accumulatorValueOrigins = new LinkedHashMap<>();
+
+  /**
    * The index of the instruction being processed, or {@code -1} when it is unknown.
    *
    * <p>The engine publishes it on the context before every instruction; this field is the checker's
@@ -1501,6 +1513,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     fieldTaintTracker.clear();
     arrayTaintTracker.clear(); // R694 T1
     valueAliases.clear();
+    accumulatorValueOrigins.clear();
     currentInstructionIndex = -1;
     iteratorTaint.clear();
     classRefVars.clear();
@@ -3507,6 +3520,21 @@ public abstract class TaintedCheckerBase implements DfaChecker {
           ArrayTaintTracker.TaintedEntry carried = elementTaintOf(arg, fn, ctx);
           if (carried == null) continue;
           String label = carried.label();
+          // WHICH VALUE went in. The container's state keeps a taint LABEL, and a
+          // label says nothing about the value -- so a reader of the container
+          // could not tell that the value it reads back is the value a guard
+          // talks about. The name is what carries that.
+          java.util.Set<String> origins =
+              accumulatorValueOrigins.computeIfAbsent(
+                  recv.name(), k -> new java.util.LinkedHashSet<>());
+          java.util.Set<String> argOrigins = accumulatorValueOrigins.get(arg.name());
+          if (argOrigins != null && !argOrigins.isEmpty()) {
+            // The argument is itself an accumulator: what flows in is one of the
+            // values THAT one holds.
+            origins.addAll(argOrigins);
+          } else {
+            origins.add(arg.name());
+          }
           // The receiver accumulates. It may already be tainted (from an
           // earlier append); in that case the existing label stays and the
           // new source is recorded as an additional path step, so the
@@ -3553,6 +3581,15 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       String label = labelOf(recv);
       if (label == null) return;
       taintedVars.put(dv, factFor(dv, label));
+      // The value read back is one of the values that went in -- the container
+      // holds them, and the read hands one of them out. Each of them is a
+      // may-alias for the result, so the result joins all of them.
+      java.util.Set<String> origins = accumulatorValueOrigins.get(recv.name());
+      if (origins != null) {
+        for (String origin : origins) {
+          valueAliases.alias(dv.name(), origin, currentInstructionIndex);
+        }
+      }
       List<FlowStep> path = new ArrayList<>();
       List<FlowStep> recvPath = taintPaths.get(recv);
       if (recvPath != null) path.addAll(recvPath);
@@ -4393,7 +4430,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // overload defaults to -1 and the loader
       // falls back to the orphan-SOURCE shape.
       int srcV2Handle = v2TraceHandle.getOrDefault(valueVar, -1);
-      fieldTaintTracker.recordWrite(recvName, ins.fieldName, fldLabel, fldPath, srcV2Handle);
+      // The write also records WHICH VALUE went in, so that a reader of the field can tell that
+      // the value it reads back is that value -- and therefore that a guard on it still constrains
+      // it. The label alone says only "tainted", not "this taint".
+      fieldTaintTracker.recordWrite(
+          recvName, ins.fieldName, fldLabel, fldPath, srcV2Handle, valueVar.name());
       // The same write, recorded by LOCATION. The coarse tracker above keys the field by the
       // receiver's NAME, so two objects reached through the same name share one slot; the
       // access-path store keys it by the object's identity, so they do not.
@@ -5079,6 +5120,12 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // path, append a "field-load" step
     // recording this load site.
     taintedVars.put(dv, factFor(dv, tracked.label()));
+    // The value read back is the value that was written: the field holds one
+    // value, and the guard on that value still constrains it. So the load's
+    // destination joins the writer's value -- the same relation a copy makes.
+    if (tracked.valueOrigin() != null) {
+      valueAliases.alias(dv.name(), tracked.valueOrigin(), currentInstructionIndex);
+    }
     List<FlowStep> newPath = new ArrayList<>();
     newPath.addAll(tracked.path());
     newPath.add(

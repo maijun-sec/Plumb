@@ -141,7 +141,7 @@ public final class FieldTaintTracker {
    * the taint came from a non-tracked path)" — in that case the loader still falls back to the
    * orphan-SOURCE shape from .
    */
-  public record TrackedTaint(String label, List<FlowStep> path, int v2Handle) {
+  public record TrackedTaint(String label, List<FlowStep> path, int v2Handle, String valueOrigin) {
     public TrackedTaint {
       Objects.requireNonNull(label, "label");
       path = path == null ? List.of() : List.copyOf(path);
@@ -149,7 +149,12 @@ public final class FieldTaintTracker {
 
     /** Convenience for callers that don't have a v2 handle — defaults to {@code -1} (unknown). */
     public TrackedTaint(String label, List<FlowStep> path) {
-      this(label, path, -1);
+      this(label, path, -1, null);
+    }
+
+    /** Convenience for callers that have a v2 handle but no value identity. */
+    public TrackedTaint(String label, List<FlowStep> path, int v2Handle) {
+      this(label, path, v2Handle, null);
     }
   }
 
@@ -219,11 +224,35 @@ public final class FieldTaintTracker {
    */
   public void recordWrite(
       String receiver, String fieldName, String label, List<FlowStep> path, int v2Handle) {
+    recordWrite(receiver, fieldName, label, path, v2Handle, null);
+  }
+
+  /**
+   * Record a write that also says WHICH VALUE went into the field.
+   *
+   * <p>{@code valueOrigin} is the name of the variable whose value was stored. It is what lets a
+   * reader of the field know that the value it reads back is the value that went in — and therefore
+   * that a guard on that value still constrains it. Without it, the field holds a taint LABEL and
+   * nothing about the value itself, so a path condition about the value cannot be recovered at the
+   * read site.
+   *
+   * @param valueOrigin the name of the variable whose value was stored, or {@code null} when the
+   *     write's value identity is unknown
+   */
+  public void recordWrite(
+      String receiver,
+      String fieldName,
+      String label,
+      List<FlowStep> path,
+      int v2Handle,
+      String valueOrigin) {
     String k = keyOf(receiver, fieldName);
     if (k == null) return;
     if (label == null) return;
     thisFields.put(
-        k, new TrackedTaint(label, path == null ? List.of() : new ArrayList<>(path), v2Handle));
+        k,
+        new TrackedTaint(
+            label, path == null ? List.of() : new ArrayList<>(path), v2Handle, valueOrigin));
   }
 
   /**

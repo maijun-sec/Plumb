@@ -160,6 +160,80 @@ class ValueAliasGuardTest {
       }
       """;
 
+  /** The guarded value goes into a field, and the sink reads the field back. */
+  private static final String GUARD_THROUGH_FIELD =
+      """
+      package mini;
+      import java.sql.SQLException;
+      import java.sql.Statement;
+      public class GuardThroughField {
+        private int stored;
+        public void go(Statement st, java.io.BufferedReader reader) throws Exception {
+          int v = Integer.parseInt(reader.readLine());
+          if (v > 5 && v < 3) {
+            this.stored = v;
+            st.executeQuery("SELECT * FROM t WHERE c = '" + this.stored + "'");
+          }
+        }
+      }
+      """;
+
+  /** The field holds ANOTHER value: the guard on this one says nothing about that one. */
+  private static final String FIELD_HOLDS_ANOTHER_VALUE =
+      """
+      package mini;
+      import java.sql.SQLException;
+      import java.sql.Statement;
+      public class FieldHoldsAnotherValue {
+        private int stored;
+        public void go(Statement st, java.io.BufferedReader reader) throws Exception {
+          int v = Integer.parseInt(reader.readLine());
+          int other = Integer.parseInt(reader.readLine());
+          if (v > 5 && v < 3) {
+            this.stored = other;
+            st.executeQuery("SELECT * FROM t WHERE c = '" + this.stored + "'");
+          }
+        }
+      }
+      """;
+
+  /** The guarded value goes into a container, and the sink reads the element back. */
+  private static final String GUARD_THROUGH_CONTAINER =
+      """
+      package mini;
+      import java.sql.SQLException;
+      import java.sql.Statement;
+      public class GuardThroughContainer {
+        public void go(Statement st, java.io.BufferedReader reader) throws Exception {
+          int v = Integer.parseInt(reader.readLine());
+          java.util.List<Integer> xs = new java.util.ArrayList<>();
+          if (v > 5 && v < 3) {
+            xs.add(v);
+            st.executeQuery("SELECT * FROM t WHERE c = '" + xs.get(0) + "'");
+          }
+        }
+      }
+      """;
+
+  /** The container holds ANOTHER value: the guard on this one says nothing about that one. */
+  private static final String CONTAINER_HOLDS_ANOTHER_VALUE =
+      """
+      package mini;
+      import java.sql.SQLException;
+      import java.sql.Statement;
+      public class ContainerHoldsAnotherValue {
+        public void go(Statement st, java.io.BufferedReader reader) throws Exception {
+          int v = Integer.parseInt(reader.readLine());
+          int other = Integer.parseInt(reader.readLine());
+          java.util.List<Integer> xs = new java.util.ArrayList<>();
+          if (v > 5 && v < 3) {
+            xs.add(other);
+            st.executeQuery("SELECT * FROM t WHERE c = '" + xs.get(0) + "'");
+          }
+        }
+      }
+      """;
+
   @TempDir Path tmp;
 
   @Test
@@ -216,6 +290,55 @@ class ValueAliasGuardTest {
         .as(
             "the copy holds 7 now, so a guard on it says nothing about the original's value --"
                 + " and the guard is about the copy, which is not the value that reaches the sink")
+        .hasSize(1);
+  }
+
+  @Test
+  void aGuardOnTheValueConstrainsTheValueReadBackFromAField() throws Exception {
+    String dir = "f" + uid();
+    List<Finding> findings =
+        scan(List.of(translate(dir + "/GuardThroughField.java", GUARD_THROUGH_FIELD)));
+
+    assertThat(inFile(findings, "GuardThroughField.java"))
+        .as(
+            "the field holds that value, so reading the field back reads the value the guard"
+                + " talks about")
+        .isEmpty();
+  }
+
+  @Test
+  void aGuardDoesNotConstrainAFieldThatHoldsAnotherValue() throws Exception {
+    String dir = "g" + uid();
+    List<Finding> findings =
+        scan(List.of(translate(dir + "/FieldHoldsAnotherValue.java", FIELD_HOLDS_ANOTHER_VALUE)));
+
+    assertThat(inFile(findings, "FieldHoldsAnotherValue.java"))
+        .as("the field holds a different value, so the guard on this one says nothing about it")
+        .hasSize(1);
+  }
+
+  @Test
+  void aGuardOnTheValueConstrainsTheElementReadBackFromAContainer() throws Exception {
+    String dir = "h" + uid();
+    List<Finding> findings =
+        scan(List.of(translate(dir + "/GuardThroughContainer.java", GUARD_THROUGH_CONTAINER)));
+
+    assertThat(inFile(findings, "GuardThroughContainer.java"))
+        .as("the container holds that value, so reading the element back reads it")
+        .isEmpty();
+  }
+
+  @Test
+  void aGuardDoesNotConstrainAContainerThatHoldsAnotherValue() throws Exception {
+    String dir = "i" + uid();
+    List<Finding> findings =
+        scan(
+            List.of(
+                translate(
+                    dir + "/ContainerHoldsAnotherValue.java", CONTAINER_HOLDS_ANOTHER_VALUE)));
+
+    assertThat(inFile(findings, "ContainerHoldsAnotherValue.java"))
+        .as("the container holds a different value, so the guard on this one says nothing about it")
         .hasSize(1);
   }
 

@@ -95,7 +95,7 @@ class HardCaseSuiteTest {
    *
    * <p>It is the number of cases the engine gets right today. It only ever goes up.
    *
-   * <p><b>Where the number came from.</b> 17 of the 23 cases, measured on the tree this change was
+   * <p><b>Where the number came from.</b> 20 of the 23 cases, measured on the tree this change was
    * made on: the three assignment cases ({@code fs-reassign-const}, {@code fs-param-reassign},
    * {@code fs-field-reassign}) became passable when an assignment stopped keeping a taint it had
    * already overwritten; {@code fs-branch-both-clean} became passable when the join of two arms
@@ -103,18 +103,21 @@ class HardCaseSuiteTest {
    * became passable when a callee's clean write of a field reached the caller that reads it; and
    * {@code cs-guard-on-source-then-concatenation} and {@code cs-guard-through-local-copy} became
    * passable when the path condition followed the VALUE rather than the variable NAME -- the guard
-   * was on the value (or on a copy of it) while the sink received a temporary built from it.
+   * was on the value (or on a copy of it) while the sink received a temporary built from it; and
+   * {@code cs-guard-on-source-then-field} and {@code cs-guard-on-source-then-container} became
+   * passable when the field and the container recorded WHICH VALUE went into them, so the value
+   * read back out is the value the guard talks about.
    *
-   * <p><b>Why the set has 23 cases but the floor is 17.</b> The remaining six are <b>open</b>: the
-   * engine still gets them wrong, and they all have the same shape — the guard is on the SOURCE (or
-   * on a copy of it, or on a value that travels through a field, a container, a call boundary or a
-   * return value) while the sink's own argument is a temporary that carries no guard of its own. A
-   * path condition built from the sink's argument alone is therefore empty, and the contradiction
-   * is never asked about. They are in the set so that this gap has a number: an open case
-   * contributes 0 to the score, so the floor is unaffected, and the score moves when the mechanism
-   * starts following the VALUE rather than the variable name.
+   * <p><b>Why the set has 23 cases but the floor is 20.</b> The remaining three are <b>open</b>:
+   * the engine still gets them wrong, and they all have the same shape — the guard is in the CALLEE
+   * while the sink's argument is the value that came back across the call boundary, so the guard
+   * has to travel with the value rather than with the name. A path condition built from the sink's
+   * argument alone is therefore empty, and the contradiction is never asked about. They are in the
+   * set so that this gap has a number: an open case contributes 0 to the score, so the floor is
+   * unaffected, and the score moves when the mechanism starts following the VALUE rather than the
+   * variable name.
    */
-  private static final int FLOOR = 17;
+  private static final int FLOOR = 20;
 
   private static final String MANIFEST = "/hardcases/manifest.tsv";
 
