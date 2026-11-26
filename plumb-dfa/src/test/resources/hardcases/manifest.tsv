@@ -36,3 +36,11 @@ cs-exclusion-contradiction UncontrolledMemAllocChecker dfa-taint-uncontrolled-me
 cs-array-length-guard    ArrayIndexChecker       dfa-taint-unchecked-array-index  NO_FINDING   constraint  closed
 cs-div-zero-guard        DivByZeroChecker        dfa-taint-div-by-zero            NO_FINDING   constraint  closed
 cs-null-guard            NullDerefChecker        dfa-taint-null-dereference       NO_FINDING   constraint  closed
+cs-guard-on-source-then-concatenation UncontrolledMemAllocChecker dfa-taint-uncontrolled-mem-alloc NO_FINDING constraint open
+cs-guard-on-source-then-field         UncontrolledMemAllocChecker dfa-taint-uncontrolled-mem-alloc NO_FINDING constraint open
+cs-guard-on-source-then-container     UncontrolledMemAllocChecker dfa-taint-uncontrolled-mem-alloc NO_FINDING constraint open
+cs-guard-on-source-then-return-value  UncontrolledMemAllocChecker dfa-taint-uncontrolled-mem-alloc NO_FINDING constraint open
+cs-guard-through-local-copy           UncontrolledMemAllocChecker dfa-taint-uncontrolled-mem-alloc NO_FINDING constraint open
+cs-guard-through-container            UncontrolledMemAllocChecker dfa-taint-uncontrolled-mem-alloc NO_FINDING constraint open
+cs-guard-across-call-boundary         UncontrolledMemAllocChecker dfa-taint-uncontrolled-mem-alloc NO_FINDING constraint open
+cs-guard-through-return-value         UncontrolledMemAllocChecker dfa-taint-uncontrolled-mem-alloc NO_FINDING constraint open
