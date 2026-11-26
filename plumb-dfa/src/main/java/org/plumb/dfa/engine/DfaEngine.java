@@ -1246,6 +1246,14 @@ public final class DfaEngine {
     // recomputing cannot drift.
     HashMap<String, HashSet<String>> localClean = new HashMap<>();
 
+    // The CONTENT facts as of each CALL SITE, in call order, keyed by the caller's merged key.
+    //
+    // <p>They are per call site because a container stops being provably clean the moment it
+    // ESCAPES to a call: the callee may store into what it is given, and that store is invisible
+    // to the caller. So the fact a call site needs is the one BEFORE that call, not the one at
+    // the end of the function.
+    HashMap<String, List<HashMap<String, Boolean>>> localCallContent = new HashMap<>();
+
     // The parameters whose every observed call site passes a value the analysis can prove
     // clean. Published from the previous round, because the evidence for a call site is
     // only complete after the round that produced it -- and a chain of helpers needs
@@ -1254,6 +1262,19 @@ public final class DfaEngine {
     // <p>Keyed by the MERGED key of the parameter, NOT by the bare signature. See
     // cleanKey for why the bare signature makes the transitive proof impossible.
     HashSet<String> alwaysCleanParams = new HashSet<>();
+    // The CONTENT-CLEAN parameters: parameters whose CONTENTS the analysis can prove hold
+    // nothing the attacker controls.
+    //
+    // <p>This is a SECOND kind of proof, not a variant of the first. The proof above says "the
+    // VALUE the caller passes is clean"; for a container the caller passes a REFERENCE, and what
+    // the callee reads out of it is whatever was STORED into it. A clean reference says nothing
+    // about the contents, so a contract that only looks at the reference leaves every repaired
+    // program that fills a container with a constant reported.
+    //
+    // <p>The two proofs are kept apart because they are not interchangeable: a parameter proven
+    // content-clean is a container whose contents are clean, and that does NOT make the
+    // container's reference a clean VALUE.
+    HashSet<String> alwaysContentCleanParams = new HashSet<>();
 
     // The labels of the SHARED CELLS -- a storage location that more than one
     // function reads and writes. Keyed by "<receiver>.<field>", the same shape the
@@ -1347,6 +1368,17 @@ public final class DfaEngine {
       // note above on why they are not accumulated across rounds.
       HashSet<String> roundClean = new HashSet<>();
       HashSet<String> roundDirty = new HashSet<>();
+      // The CONTENT channel of the same contract: the parameters whose every call site passes a
+      // CONTAINER whose contents the analysis can prove clean.
+      //
+      // <p>A call site contributes to exactly one of the two channels. A content proof is NOT a
+      // value proof -- a container's reference being clean says nothing about what is stored in
+      // it -- so a content site also lands in roundDirty, which is how the value channel
+      // refuses to claim it.
+      HashSet<String> roundContentClean = new HashSet<>();
+      // The parameters with at least one call site that is NOT a content proof. A parameter is
+      // content-clean only when EVERY call site is one.
+      HashSet<String> roundNotContentClean = new HashSet<>();
 
       // (a) intra-procedural propagation over each function's instructions
       for (TacFunction fn : fns) {
@@ -1368,6 +1400,19 @@ public final class DfaEngine {
         for (int i = 0; i < fn.params().size(); i++) {
           cleanVars.put(fn.params().get(i).name(), alwaysCleanParams.contains(cleanKey(fn, i)));
         }
+        // The CONTENT facts of this function: what each container holds. A container is
+        // content-clean when every value stored into it is provably clean.
+        //
+        // <p>A parameter enters this map the same way it enters cleanVars, through the contract:
+        // a parameter the call sites prove content-clean enters with clean CONTENTS, and that is
+        // what makes the proof transitive across a chain of helpers that hand the container on.
+        HashMap<String, Boolean> containerVars = new HashMap<>();
+        for (int i = 0; i < fn.params().size(); i++) {
+          containerVars.put(
+              fn.params().get(i).name(), alwaysContentCleanParams.contains(contentKey(fn, i)));
+        }
+        // The content facts AS OF each call site, in call order.
+        List<HashMap<String, Boolean>> callContent = new ArrayList<>();
         for (TacInstruction ins : fn.instructions()) {
           String destName = destVarName(ins);
           if (destName == null) continue;
@@ -1378,6 +1423,18 @@ public final class DfaEngine {
           if (fact != null) {
             // "EVERY definition is provably clean", not "the last one is".
             cleanVars.put(destName, cleanVars.getOrDefault(destName, Boolean.TRUE) && fact);
+          }
+
+          // The CONTENT facts: what the containers of this function hold. A call records the
+          // facts of its arguments BEFORE the call's own effects, because a callee may write
+          // into what it is given and that write is invisible here.
+          HashMap<String, Boolean> argContent = null;
+          if (ins.kind == TacInstruction.Kind.CALL) {
+            argContent = new HashMap<>();
+          }
+          applyContainerEffects(ins, cleanVars, containerVars, argContent);
+          if (argContent != null) {
+            callContent.add(argContent);
           }
 
           switch (ins.kind) {
@@ -1457,6 +1514,7 @@ public final class DfaEngine {
           if (Boolean.TRUE.equals(e.getValue())) cleanNames.add(e.getKey());
         }
         localClean.put(mergedKeyOf(fn), cleanNames);
+        localCallContent.put(mergedKeyOf(fn), callContent);
       }
 
       // (b) cross-function transfer.
@@ -1468,8 +1526,13 @@ public final class DfaEngine {
       for (TacFunction caller : fns) {
         HashMap<String, String> lab = localLabel.get(mergedKeyOf(caller));
         if (lab == null) continue;
+        // The ordinal of the call within the caller, so the content facts recorded for that
+        // call site can be found again. It counts EVERY call, including the ones this loop
+        // skips, because the recording counted them too.
+        int callOrdinal = 0;
         for (TacInstruction call : caller.instructions()) {
           if (call.kind != TacInstruction.Kind.CALL) continue;
+          int thisCall = callOrdinal++;
           TacFunction callee =
               resolveCallee(
                   program,
@@ -1532,6 +1595,12 @@ public final class DfaEngine {
             int argIdx = j + firstArg;
             if (argIdx >= args.size()) break;
             String k = key(callee, j);
+            // TWO keys, because the two contracts are two DIFFERENT statements about the
+            // same parameter. One variable cannot carry both: the distinction is lost in
+            // the middle of the round, and the published map then holds keys that nobody
+            // looks up.
+            String valueKey = cleanKey(callee, j);
+            String contentKey = contentKey(callee, j);
             // was this argument a literal? Only a literal is positive proof
             // of cleanliness -- see the CLEAN_ARGUMENTS contract.
             //
@@ -1541,7 +1610,9 @@ public final class DfaEngine {
             // ordering mistake is invisible in the output -- the map is simply empty
             // and the gate silently does nothing.
             if (!(args.get(argIdx) instanceof org.plumb.tac.ir.TacOperand.TacVar)) {
-              roundClean.add(cleanKey(callee, j));
+              // A literal is a proof that the VALUE is clean.
+              roundClean.add(valueKey);
+              roundNotContentClean.add(contentKey);
               continue;
             }
             org.plumb.tac.ir.TacOperand.TacVar av =
@@ -1561,9 +1632,19 @@ public final class DfaEngine {
             // a non-literal argument is to propagate it.
             HashSet<String> callerClean = localClean.get(mergedKeyOf(caller));
             if (callerClean != null && callerClean.contains(av.name())) {
-              roundClean.add(cleanKey(callee, j));
+              // The VALUE is clean.
+              roundClean.add(valueKey);
+              roundNotContentClean.add(contentKey);
+            } else if (isContentCleanAtCall(
+                localCallContent.get(mergedKeyOf(caller)), thisCall, av.name())) {
+              // The value is not clean, but the CONTAINER the caller passes holds nothing the
+              // attacker controls. That is a different proof, and it lands in roundDirty so the
+              // value channel does not claim it.
+              roundContentClean.add(contentKey);
+              roundDirty.add(valueKey);
             } else {
-              roundDirty.add(cleanKey(callee, j));
+              roundDirty.add(valueKey);
+              roundNotContentClean.add(contentKey);
             }
             String src = lab.get(av.name());
             if (src == null) continue;
@@ -1604,6 +1685,15 @@ public final class DfaEngine {
         alwaysCleanParams = nextAlwaysClean;
         changed = true;
       }
+      // The content channel's fixed point, computed the same way and for the same reason: the
+      // content facts of this round are a function of the previous round's content-clean
+      // parameters, so a chain of helpers needs several rounds to settle.
+      HashSet<String> nextAlwaysContentClean = new HashSet<>(roundContentClean);
+      nextAlwaysContentClean.removeAll(roundNotContentClean);
+      if (!nextAlwaysContentClean.equals(alwaysContentCleanParams)) {
+        alwaysContentCleanParams = nextAlwaysContentClean;
+        changed = true;
+      }
 
       if (!changed) break;
     }
@@ -1621,6 +1711,11 @@ public final class DfaEngine {
       clean.put(k, Boolean.TRUE);
     }
     ctx.setParamCleanliness(java.util.Collections.unmodifiableMap(clean));
+    java.util.Map<String, Boolean> contentClean = new java.util.LinkedHashMap<>();
+    for (String k : alwaysContentCleanParams) {
+      contentClean.put(k, Boolean.TRUE);
+    }
+    ctx.setParamContentCleanliness(java.util.Collections.unmodifiableMap(contentClean));
     /* diag removed */
   }
 
@@ -1656,6 +1751,250 @@ public final class DfaEngine {
    */
   private static String cleanKey(TacFunction fn, int paramIndex) {
     return mergedKeyOf(fn) + "#" + paramIndex;
+  }
+
+  /**
+   * The key of a PARAMETER in the CONTENT-cleanliness map.
+   *
+   * <p>The same merged key as {@link #cleanKey}, with a different separator: the two maps hold
+   * DIFFERENT proofs about the same parameter, so they must not share a key. A parameter that is
+   * content-clean is not value-clean, and a key that could name both would say which one it meant
+   * only by accident.
+   *
+   * @param fn the function
+   * @param paramIndex the parameter's index
+   * @return the key
+   */
+  private static String contentKey(TacFunction fn, int paramIndex) {
+    return mergedKeyOf(fn) + "@" + paramIndex;
+  }
+
+  /**
+   * The methods that STORE a value into their receiver.
+   *
+   * <p>The receiver is the first operand of the call, and the stored value is the LAST one: {@code
+   * map.put(k, v)}, {@code list.add(i, v)}, {@code list.set(i, v)} all write the value they are
+   * given into the collection they are called on.
+   */
+  private static final Set<String> CONTAINER_METHODS_WITH_A_STORE =
+      Set.of(
+          "put",
+          "set",
+          "insert",
+          "replace",
+          "offer",
+          "push",
+          "append",
+          "add",
+          "addfirst",
+          "addlast",
+          "offerfirst",
+          "offerlast",
+          "addall",
+          "putall");
+
+  /**
+   * The methods that do NOT store anything into their receiver.
+   *
+   * <p>A reader changes nothing, and a remover only takes things OUT -- neither puts attacker
+   * controlled data into the container. Every method that is not on this list and not a writer is
+   * UNKNOWN, and an unknown method may store anything, so the container stops being provably clean.
+   * That is the conservative direction: a method this list forgot costs precision, while a method
+   * it wrongly lists costs soundness.
+   */
+  private static final Set<String> CONTAINER_METHODS_WITHOUT_A_STORE =
+      Set.of(
+          "get",
+          "getfirst",
+          "getlast",
+          "size",
+          "isempty",
+          "contains",
+          "containskey",
+          "containsvalue",
+          "keyset",
+          "values",
+          "entryset",
+          "iterator",
+          "peek",
+          "element",
+          "poll",
+          "pop",
+          "pollfirst",
+          "polllast",
+          "remove",
+          "clear",
+          "removeall",
+          "retainall",
+          "removeif",
+          "indexof",
+          "lastindexof",
+          "stream",
+          "foreach",
+          "tostring",
+          "hashcode",
+          "equals",
+          "sublist",
+          "descendingiterator",
+          "listiterator",
+          "spliterator",
+          "toarray");
+
+  /**
+   * Apply the CONTENT effects of one instruction to the container facts of the function.
+   *
+   * <p>The rules are the duals of the clean rules, one level deeper:
+   *
+   * <ul>
+   *   <li>a fresh object or array holds nothing yet -- its fields and its elements are still at
+   *       their defaults -- so its contents are clean. A constructor that TAKES arguments may put
+   *       one of them into the object, so that case is not a proof;
+   *   <li>an assignment hands the variable whatever the source held;
+   *   <li>an array store or a field store puts ONE value into the container, so the container's
+   *       contents are clean only when that value is;
+   *   <li>a writer method puts one value into its receiver, the same way;
+   *   <li>an unknown method on a receiver may store anything into it, so the container's contents
+   *       stop being provably clean;
+   *   <li>a container that is handed to a call ESCAPES: the callee may store into it, and that
+   *       store is invisible to the caller. This is the rule that is easy to leave out, and leaving
+   *       it out is not "less precise" -- it is wrong.
+   * </ul>
+   *
+   * @param ins the instruction
+   * @param cleanVars the clean facts known so far in the function
+   * @param containerVars the container facts known so far in the function
+   * @param argFactsOut when the instruction is a call, the facts of its argument variables BEFORE
+   *     this call's own effects
+   */
+  private static void applyContainerEffects(
+      TacInstruction ins,
+      HashMap<String, Boolean> cleanVars,
+      HashMap<String, Boolean> containerVars,
+      HashMap<String, Boolean> argFactsOut) {
+    if (ins == null) return;
+    switch (ins.kind) {
+      case NEW, NEWARRAY -> {
+        String dest = destVarName(ins);
+        if (dest != null) {
+          boolean noArguments = ins.args == null || ins.args.isEmpty();
+          containerVars.put(dest, noArguments ? Boolean.TRUE : Boolean.FALSE);
+        }
+      }
+      case MOVE -> {
+        String dest = destVarName(ins);
+        if (dest != null) {
+          String src = varNameOf(ins.lhs1);
+          containerVars.put(
+              dest, src == null ? Boolean.FALSE : containerVars.getOrDefault(src, Boolean.FALSE));
+        }
+      }
+      case ARRAYSTORE -> {
+        // arr[index] = value: the VALUE is the dest, the container is lhs1.
+        String container = varNameOf(ins.lhs1);
+        if (container != null) {
+          containerVars.put(
+              container,
+              andClean(containerVars.get(container), isCleanOperand(ins.dest, cleanVars)));
+        }
+      }
+      case FIELDSTORE -> {
+        // obj.field = value: the VALUE is the dest, the container is lhs1.
+        String receiver = varNameOf(ins.lhs1);
+        if (receiver != null) {
+          containerVars.put(
+              receiver, andClean(containerVars.get(receiver), isCleanOperand(ins.dest, cleanVars)));
+        }
+      }
+      case CALL -> {
+        List<org.plumb.tac.ir.TacOperand> args = ins.args;
+        if (args == null || args.isEmpty()) return;
+        // The receiver, when the call has one, is the FIRST operand and it is a VARIABLE: a
+        // class qualifier is a CONST.
+        boolean hasReceiver = args.get(0) instanceof org.plumb.tac.ir.TacOperand.TacVar;
+        String receiver = hasReceiver ? varNameOf(args.get(0)) : null;
+        if (argFactsOut != null) {
+          for (org.plumb.tac.ir.TacOperand a : args) {
+            String v = varNameOf(a);
+            if (v != null) argFactsOut.put(v, containerVars.getOrDefault(v, Boolean.FALSE));
+          }
+        }
+        String method = simpleMethodName(ins.calleeSig);
+        if (receiver != null && CONTAINER_METHODS_WITH_A_STORE.contains(method)) {
+          // The stored value is the LAST operand: map.put(k, v) stores v, list.add(i, v) stores v.
+          org.plumb.tac.ir.TacOperand written = args.get(args.size() - 1);
+          boolean writtenClean = isCleanOperand(written, cleanVars);
+          if (!writtenClean && written instanceof org.plumb.tac.ir.TacOperand.TacVar w) {
+            // A BULK writer copies a COLLECTION's contents: the copy is clean when the
+            // source's contents are.
+            writtenClean = Boolean.TRUE.equals(containerVars.get(w.name()));
+          }
+          containerVars.put(receiver, andClean(containerVars.get(receiver), writtenClean));
+        } else if (receiver != null && !CONTAINER_METHODS_WITHOUT_A_STORE.contains(method)) {
+          // An unknown method on the receiver may store anything into it.
+          containerVars.put(receiver, Boolean.FALSE);
+        }
+        // The container ESCAPES when it is handed to a call: the callee may store into it.
+        for (int i = hasReceiver ? 1 : 0; i < args.size(); i++) {
+          String v = varNameOf(args.get(i));
+          if (v != null) containerVars.put(v, Boolean.FALSE);
+        }
+      }
+      default -> {
+        // nothing defines a container's contents here.
+      }
+    }
+  }
+
+  /**
+   * AND two content facts, where an unknown fact counts as not clean.
+   *
+   * @param existing what the container held before
+   * @param added whether the value just stored into it is clean
+   * @return the fact after the store
+   */
+  private static Boolean andClean(Boolean existing, boolean added) {
+    return Boolean.TRUE.equals(existing) && added;
+  }
+
+  /**
+   * Whether the variable was provably clean in the CONTENT sense at the given call site.
+   *
+   * @param facts the content facts recorded for the caller, in call order
+   * @param callOrdinal the call's ordinal within the caller
+   * @param varName the variable's name
+   * @return whether the container's contents were provably clean at that call
+   */
+  private static boolean isContentCleanAtCall(
+      List<HashMap<String, Boolean>> facts, int callOrdinal, String varName) {
+    if (facts == null || callOrdinal < 0 || callOrdinal >= facts.size()) return false;
+    HashMap<String, Boolean> atCall = facts.get(callOrdinal);
+    return atCall != null && Boolean.TRUE.equals(atCall.get(varName));
+  }
+
+  /**
+   * The name of the variable an operand names, or {@code null}.
+   *
+   * @param op the operand
+   * @return the name, or {@code null}
+   */
+  private static String varNameOf(org.plumb.tac.ir.TacOperand op) {
+    if (op instanceof org.plumb.tac.ir.TacOperand.TacVar v) return v.name();
+    return null;
+  }
+
+  /**
+   * The simple name of the method a call names, lower-cased.
+   *
+   * @param calleeSig the call's signature
+   * @return the simple name, or the empty string
+   */
+  private static String simpleMethodName(String calleeSig) {
+    if (calleeSig == null) return "";
+    int slash = calleeSig.indexOf('/');
+    String head = slash >= 0 ? calleeSig.substring(0, slash) : calleeSig;
+    int dot = head.lastIndexOf('.');
+    String name = dot >= 0 ? head.substring(dot + 1) : head;
+    return name.toLowerCase(java.util.Locale.ROOT);
   }
 
   /**

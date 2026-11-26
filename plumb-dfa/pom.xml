@@ -200,6 +200,11 @@
                              call site fills with a provably clean value is not a source, and
                              the proof survives a two-hop chain of same-named methods. -->
                         <include>org/plumb/dfa/taint/ParamCleanlinessFollowsTheCallSiteTest.java</include>
+                        <!-- The container CONTENT follows the call site: a container whose
+                             every stored value is provably clean carries nothing the
+                             attacker controls, and a container handed to another call
+                             stops being provably clean. -->
+                        <include>org/plumb/dfa/taint/ContainerContentFollowsTheCallSiteTest.java</include>
                         <!-- The Go sink catalogue: the Go front end's symbols must
                              be the ones the catalogue names, and the Go
                              accumulators must carry the taint both ways. -->

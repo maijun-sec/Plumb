@@ -490,6 +490,39 @@ public final class AnalysisContext {
   }
 
   /**
+   * The parameters whose CONTENTS are provably clean.
+   *
+   * <p>This is a different proof from {@link #paramCleanliness}: a clean VALUE says the caller
+   * hands the callee a harmless thing, while a clean CONTENT says the container the caller hands
+   * over holds nothing the attacker controls. The two are kept apart because neither implies the
+   * other -- a container's reference being clean says nothing about what is stored in it.
+   */
+  private volatile java.util.Map<String, Boolean> paramContentCleanliness = java.util.Map.of();
+
+  public java.util.Map<String, Boolean> paramContentCleanliness() {
+    return paramContentCleanliness;
+  }
+
+  public void setParamContentCleanliness(java.util.Map<String, Boolean> clean) {
+    this.paramContentCleanliness = clean == null ? java.util.Map.of() : clean;
+  }
+
+  /**
+   * Is this parameter known to receive only containers whose contents are provably clean?
+   *
+   * @param fn the function the parameter belongs to
+   * @param paramIndex the parameter's index
+   * @return {@code false} when unknown, which callers must treat as "no information" rather than as
+   *     "dirty".
+   */
+  public boolean isParamContentAlwaysClean(TacFunction fn, int paramIndex) {
+    if (fn == null) return false;
+    return Boolean.TRUE.equals(
+        paramContentCleanliness.get(
+            org.plumb.tac.ir.MergedProgram.mergedKey(fn) + "@" + paramIndex));
+  }
+
+  /**
    * Is this parameter known to receive only provably-clean values?
    *
    * <p>The parameter is identified by the FUNCTION it belongs to, not by a signature string,

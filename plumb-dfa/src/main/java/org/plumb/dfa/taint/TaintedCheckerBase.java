@@ -1259,7 +1259,14 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       //
       // A parameter NOBODY calls stays a source: the entry boundary really is
       // a trust boundary there, and that is the conservative answer.
-      if (ctx != null && ctx.isParamAlwaysClean(fn, paramIndex)) {
+      //
+      // A CONTAINER parameter is a second case: what the callee reads out of it is what
+      // the caller STORED into it, so the proof that matters is about the contents, not
+      // about the reference. A container whose every stored value is provably clean
+      // carries nothing the attacker controls, so it is not a source either.
+      if (ctx != null
+          && (ctx.isParamAlwaysClean(fn, paramIndex)
+              || ctx.isParamContentAlwaysClean(fn, paramIndex))) {
         continue;
       }
       markSource(p, "param:" + p.name(), null, fn.signature(), "param:" + p.name());
