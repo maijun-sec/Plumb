@@ -210,6 +210,10 @@
                              overwrite in one arm of a branch does not silence the
                              other arm. -->
                         <include>org/plumb/dfa/taint/AssignmentKillsTaintTest.java</include>
+                        <!-- The join of two branches: a value that EVERY arm
+                             overwrote is clean where the arms meet, and one
+                             arm that did not is enough to keep the taint. -->
+                        <include>org/plumb/dfa/taint/BranchJoinTaintTest.java</include>
                         <!-- The Go sink catalogue: the Go front end's symbols must
                              be the ones the catalogue names, and the Go
                              accumulators must carry the taint both ways. -->

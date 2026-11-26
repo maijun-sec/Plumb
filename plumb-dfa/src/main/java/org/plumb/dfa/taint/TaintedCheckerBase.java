@@ -286,14 +286,14 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * would go unreported.
    *
    * <p>So the kill holds for the rest of the block it sits in, and the fact comes back when the
-   * block ends. That is the honest reading of what a single straight-line region can prove: the
-   * assignment happened before the use, on every path that reaches the use through this block.
+   * block ends -- UNLESS the analysis can prove that the fact is absent on every path into the next
+   * block. That exception is the join rule: when every predecessor of a block killed the fact,
+   * there is no path into the block that carries it, so the fact is absent there for real.
    *
-   * <p><b>What it does not claim.</b> A kill in one block does not reach a use in a later block,
-   * even when the assignment would in fact dominate that use. Proving that needs the dominator tree
-   * and a join at every merge point; until then, the fact is restored and the finding is reported.
-   * A conservative answer that keeps the true positive is the right direction for this lattice:
-   * taint is a MAY-property, and a lattice that loses a may-property loses findings.
+   * <p><b>What it does not claim.</b> A kill in one block does not reach a use in a later block
+   * that the kill does not dominate -- the fact comes back and the finding is reported. A
+   * conservative answer that keeps the true positive is the right direction for this lattice: taint
+   * is a MAY-property, and a lattice that loses a may-property loses findings.
    *
    * <p>Cleared at every function boundary by {@link #initFunction}.
    */
@@ -340,12 +340,171 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private final Set<TacOperand.TacVar> establishedHere = new HashSet<>();
 
   /**
-   * The end of a basic block: the facts a kill removed come back.
+   * What one walked block proved about the taint.
    *
-   * <p>The kill holds for the block it happened in, because on every path that reaches a later use
-   * through this block the assignment ran first. Past the block, another path may reach the use
-   * without running the assignment at all -- so the fact is restored, and the use sees the taint it
-   * would have seen without the kill.
+   * <p>Both facts are about "the taint is gone here", and they answer different questions:
+   *
+   * <ul>
+   *   <li>{@code killed} -- the variables an assignment overwrote inside this block with a value
+   *       that carries no taint, and that were still dead when the block ended.
+   *   <li>{@code mustDeadOut} -- the variables that are <b>absent on every path</b> at the end of
+   *       this block: the ones killed here, plus the ones already absent on entry, minus the ones
+   *       that are alive again.
+   * </ul>
+   *
+   * <p>The difference matters at a join. "This block killed it" is a statement about one block;
+   * "absent on every path" is a statement about the program's control flow, and only the second one
+   * may be used to drop a fact.
+   */
+  private static final class BlockFacts {
+    final Set<TacOperand.TacVar> killed = new java.util.LinkedHashSet<>();
+    final Set<TacOperand.TacVar> mustDeadOut = new java.util.LinkedHashSet<>();
+  }
+
+  /**
+   * The facts each walked block proved, keyed by block id.
+   *
+   * <p>Per function: cleared by {@link #initFunction}.
+   */
+  private final Map<Integer, BlockFacts> blockFacts = new LinkedHashMap<>();
+
+  /**
+   * The variables that are absent on every path at the entry of the block being walked.
+   *
+   * <p>Empty means "nothing is proved absent", which is the answer for every block the analysis
+   * cannot decide -- and the answer that keeps a finding.
+   */
+  private Set<TacOperand.TacVar> mustDeadHere = Set.of();
+
+  /** The block the walk is currently in, or {@code -1} before the first block. */
+  private int currentBlockId = -1;
+
+  /**
+   * The normal predecessors of every block, keyed by block id. {@code null} when there is no graph.
+   */
+  private Map<Integer, List<Integer>> normalPredecessors;
+
+  /** The blocks that can reach a block by throwing, keyed by block id. */
+  private Map<Integer, List<Integer>> exceptionPredecessors;
+
+  /** The graph the two maps above were computed from. */
+  private TacCfg predecessorsOf;
+
+  /**
+   * The blocks that feed a block, read off the control-flow graph.
+   *
+   * <p>The graph comes from the engine (the one it walks), not from a second copy built here: two
+   * graphs of the same function can disagree about where a branch joins, and a checker that
+   * answered "is this a join" from its own graph would answer it from a different truth than the
+   * engine walks.
+   *
+   * <p>The result is cached per graph. The engine analyses one function at a time per checker, and
+   * the graph object is the engine's own cached one, so the identity comparison is enough.
+   *
+   * @param ctx the analysis context
+   */
+  private void ensurePredecessors(AnalysisContext ctx) {
+    TacCfg cfg = ctx.currentFunctionCfg();
+    if (cfg == null) {
+      normalPredecessors = null;
+      exceptionPredecessors = null;
+      predecessorsOf = null;
+      return;
+    }
+    if (cfg == predecessorsOf) return;
+    Map<Integer, List<Integer>> normal = new LinkedHashMap<>();
+    for (Map.Entry<Integer, List<Integer>> e : cfg.successors().entrySet()) {
+      for (int s : e.getValue()) {
+        normal.computeIfAbsent(s, k -> new ArrayList<>()).add(e.getKey());
+      }
+    }
+    Map<Integer, List<Integer>> exception = new LinkedHashMap<>();
+    for (Map.Entry<Integer, List<Integer>> e : cfg.exceptionSuccessors().entrySet()) {
+      for (int s : e.getValue()) {
+        exception.computeIfAbsent(s, k -> new ArrayList<>()).add(e.getKey());
+      }
+    }
+    this.normalPredecessors = normal;
+    this.exceptionPredecessors = exception;
+    this.predecessorsOf = cfg;
+  }
+
+  /**
+   * The variables that are absent on every path at the entry of a block.
+   *
+   * <p>This is the join rule, and it is a <b>must</b> question: a variable is absent here only if
+   * it is absent at the end of <em>every</em> predecessor. One predecessor that still carries the
+   * taint is enough to keep it -- the value at the join may be the tainted one.
+   *
+   * <p>Three cases answer "nothing is proved absent", and all three are on the conservative side:
+   *
+   * <ul>
+   *   <li>the block has no predecessor -- it is the entry, and nothing is dead before the program
+   *       starts;
+   *   <li>a predecessor has not been walked yet -- a loop's back edge, which the engine reaches
+   *       after the header, so the header cannot know what the loop body will do;
+   *   <li>the block can be reached by throwing -- the throwing block may have thrown BEFORE the
+   *       assignment that kills the taint ran, so on that path the taint is still there.
+   * </ul>
+   *
+   * @param blockId the block being entered
+   * @return the variables that are absent on every path into the block
+   */
+  private Set<TacOperand.TacVar> computeMustDeadIn(int blockId) {
+    if (normalPredecessors == null) return Set.of();
+    List<Integer> preds = normalPredecessors.get(blockId);
+    if (preds == null || preds.isEmpty()) return Set.of();
+    if (exceptionPredecessors != null && exceptionPredecessors.containsKey(blockId))
+      return Set.of();
+    Set<TacOperand.TacVar> acc = null;
+    for (int p : preds) {
+      BlockFacts f = blockFacts.get(p);
+      if (f == null) return Set.of();
+      if (acc == null) {
+        acc = new java.util.LinkedHashSet<>(f.mustDeadOut);
+      } else {
+        acc.retainAll(f.mustDeadOut);
+      }
+      if (acc.isEmpty()) return Set.of();
+    }
+    return acc == null ? Set.of() : acc;
+  }
+
+  /**
+   * Record what the block being left proved, and hand the walk over to the next block.
+   *
+   * <p>The facts recorded here are what the join rule reads: "which variables did this block kill"
+   * and "which variables are absent on every path at the end of this block".
+   */
+  private void leaveBlock() {
+    if (currentBlockId < 0) return;
+    BlockFacts f = new BlockFacts();
+    for (TacOperand.TacVar v : killedTaints.keySet()) {
+      // A variable that was killed and then tainted again inside the block is not dead at the
+      // block's end: the later assignment is the value the variable holds now.
+      if (!taintedVars.containsKey(v)) f.killed.add(v);
+    }
+    // Absent on every path at the end of the block: what was already absent, plus what this
+    // block killed, minus what is alive again (the may-state is the upper bound on "present").
+    f.mustDeadOut.addAll(mustDeadHere);
+    f.mustDeadOut.addAll(f.killed);
+    f.mustDeadOut.removeAll(taintedVars.keySet());
+    blockFacts.put(currentBlockId, f);
+  }
+
+  /**
+   * The end of a basic block, and the beginning of the next one.
+   *
+   * <p>Two things happen at a block boundary.
+   *
+   * <p><b>The facts a kill removed come back</b> -- unless the analysis can prove they are absent
+   * on every path into the new block. The engine's analysis is path-insensitive and a variable can
+   * be reached by more than one path, so a kill on one path does not reach a use on another one.
+   * That is why a bare kill is local to its block. But a join is different: if EVERY predecessor
+   * killed the fact, then there is no path into the join that carries it, and the fact is absent
+   * there for real.
+   *
+   * <p><b>The block that was left is recorded</b>, so the next join can read what it proved.
    *
    * <p>A variable that was re-tainted after the kill keeps its NEW fact: the value it holds now is
    * the one the later assignment put there, not the one the kill removed.
@@ -356,9 +515,20 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    */
   @Override
   public void enterBlock(AnalysisContext ctx, TacFunction fn, int blockId) {
+    ensurePredecessors(ctx);
+    leaveBlock();
+    currentBlockId = blockId;
+    mustDeadHere = computeMustDeadIn(blockId);
+    // What is absent on every path leaves the state: the variable holds a clean value here,
+    // on every way in.
+    for (TacOperand.TacVar v : mustDeadHere) {
+      taintedVars.remove(v);
+      taintPaths.remove(v);
+    }
     if (killedTaints.isEmpty()) return;
     for (Map.Entry<TacOperand.TacVar, TaintFact> e : killedTaints.entrySet()) {
       TacOperand.TacVar v = e.getKey();
+      if (mustDeadHere.contains(v)) continue;
       if (taintedVars.containsKey(v)) continue;
       taintedVars.put(v, e.getValue());
       List<FlowStep> path = killedPaths.get(v);
@@ -1292,6 +1462,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     taintPaths.clear();
     killedTaints.clear();
     killedPaths.clear();
+    blockFacts.clear();
+    mustDeadHere = Set.of();
+    currentBlockId = -1;
     sinkObservations.clear();
     pathConditionFragments.clear();
     thrownTaintByInsnIdentity.clear();

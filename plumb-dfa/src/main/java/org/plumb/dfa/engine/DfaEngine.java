@@ -2833,6 +2833,10 @@ public final class DfaEngine {
     // knows where the boundaries are -- and a checker that wanted them would have to build the
     // same graph again. The map comes from the cached CFG, so it is one projection of one graph.
     int[] blockOfIndex = orderCacheFor(ctx).blockOfIndex(fn);
+    // The control-flow graph itself. The engine already has it (the block map above is a
+    // projection of it), and a checker that reasons about joins needs the edges -- so the
+    // graph is published rather than rebuilt per checker.
+    ctx.setCurrentFunctionCfg(orderCacheFor(ctx).cfg(fn));
     // The guard facts are a property of the FUNCTION, so they are collected once here and
     // shared by every checker, rather than each checker deriving its own. Two checkers
     // deriving their own is how they end up disagreeing about whether a value was guarded.
@@ -2915,6 +2919,7 @@ public final class DfaEngine {
       }
     } finally {
       ctx.setCurrentFunction(null);
+      ctx.setCurrentFunctionCfg(null);
     }
   }
 

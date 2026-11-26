@@ -164,6 +164,14 @@ public final class AnalysisContext {
   private volatile long currentFunctionStartNanos;
 
   /**
+   * The control-flow graph of the function being analysed, or {@code null} when there is none.
+   *
+   * <p>Set by the engine before the checkers walk the function, and cleared when the walk ends. See
+   * {@link #setCurrentFunctionCfg(org.plumb.tac.ir.TacCfg)}.
+   */
+  private volatile org.plumb.tac.ir.TacCfg currentFunctionCfg;
+
+  /**
    * The guard facts proved in the function being analysed, PER THREAD.
    *
    * <p>A guard is a fact about the FUNCTION, not about a checker: "this variable is bounded here"
@@ -765,6 +773,37 @@ public final class AnalysisContext {
    */
   public void startFunctionTimer() {
     this.currentFunctionStartNanos = System.nanoTime();
+  }
+
+  /**
+   * The control-flow graph of the function currently being analysed.
+   *
+   * <p><b>Why it lives here.</b> A checker that reasons about block boundaries needs to know which
+   * blocks feed which -- the join of two arms is a property of the GRAPH, not of the instruction
+   * order. The engine already has the graph (it caches one per function), so publishing it here
+   * means a checker does not have to build a second one: two graphs of the same function can
+   * disagree, and a checker that answered "is this block a join" from its own graph would answer it
+   * from a different truth than the engine walks.
+   *
+   * <p><b>Volatile, not ThreadLocal.</b> Unlike {@link #currentFunction}, this is read by the
+   * checker that owns the current function's analysis, and the engine sets it immediately before
+   * that checker's walk begins and clears it after. The parallel worklist gives each worker its own
+   * context, so the field is only ever written by the thread that owns it.
+   *
+   * @param cfg the function's control-flow graph, or {@code null} when no function is being
+   *     analysed
+   */
+  public void setCurrentFunctionCfg(org.plumb.tac.ir.TacCfg cfg) {
+    this.currentFunctionCfg = cfg;
+  }
+
+  /**
+   * The control-flow graph of the function being analysed, or {@code null} when there is none.
+   *
+   * @return the current function's control-flow graph
+   */
+  public org.plumb.tac.ir.TacCfg currentFunctionCfg() {
+    return this.currentFunctionCfg;
   }
 
   /**
