@@ -205,6 +205,11 @@
                              attacker controls, and a container handed to another call
                              stops being provably clean. -->
                         <include>org/plumb/dfa/taint/ContainerContentFollowsTheCallSiteTest.java</include>
+                        <!-- An assignment that overwrites a tainted value with a clean
+                             one kills the taint -- for the block it sits in. An
+                             overwrite in one arm of a branch does not silence the
+                             other arm. -->
+                        <include>org/plumb/dfa/taint/AssignmentKillsTaintTest.java</include>
                         <!-- The Go sink catalogue: the Go front end's symbols must
                              be the ones the catalogue names, and the Go
                              accumulators must carry the taint both ways. -->

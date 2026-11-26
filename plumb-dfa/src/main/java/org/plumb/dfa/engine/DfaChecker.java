@@ -101,6 +101,30 @@ public interface DfaChecker {
   default void checkInstruction(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {}
 
   /**
+   * Called when the analysis moves into a new basic block of the function.
+   *
+   * <p><b>Why this is a callback and not something a checker derives.</b> The engine knows where
+   * the block boundaries are: it built the control-flow graph, and it walks the function block by
+   * block in reverse post-order. A checker that wanted the boundaries would have to build the same
+   * graph again -- and a second implementation of "what is a block" drifts from the first, and the
+   * one that drifts is the one answering a question about the code.
+   *
+   * <p><b>What a checker does with it.</b> The boundary is where a path-sensitive fact ends. An
+   * assignment that overwrites a tainted value with a clean one holds only for the rest of the
+   * block it sits in: on another path the variable still holds the tainted value, so the fact has
+   * to come back when the block ends. That is the difference between "this assignment killed the
+   * taint" and "this assignment killed the taint on the path it is on", and only the engine can
+   * tell a checker which one it is looking at.
+   *
+   * <p>The default implementation does nothing.
+   *
+   * @param ctx the analysis context
+   * @param fn the function being analysed
+   * @param blockId the id of the block the analysis just entered
+   */
+  default void enterBlock(AnalysisContext ctx, TacFunction fn, int blockId) {}
+
+  /**
    * Whether this checker applies to the given function.
    *
    * <p>The engine calls this once per function and skips the checker entirely when it returns

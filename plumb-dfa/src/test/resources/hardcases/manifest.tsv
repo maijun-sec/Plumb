@@ -21,11 +21,11 @@
 # paid for with a regression somewhere else.
 #
 # id                      checker                  rule                             expect       family     status
-fs-reassign-const        SqlInjectionChecker     dfa-taint-sql-injection          NO_FINDING   flow       open
-fs-field-reassign        SqlInjectionChecker     dfa-taint-sql-injection          NO_FINDING   flow       open
+fs-reassign-const        SqlInjectionChecker     dfa-taint-sql-injection          NO_FINDING   flow       closed
+fs-field-reassign        SqlInjectionChecker     dfa-taint-sql-injection          NO_FINDING   flow       closed
 fs-branch-both-clean     SqlInjectionChecker     dfa-taint-sql-injection          NO_FINDING   flow       open
 fs-user-sanitizer        SqlInjectionChecker     dfa-taint-sql-injection          NO_FINDING   flow       closed fs-user-sanitizer.sanitizers.yaml
-fs-param-reassign        SqlInjectionChecker     dfa-taint-sql-injection          NO_FINDING   flow       open
+fs-param-reassign        SqlInjectionChecker     dfa-taint-sql-injection          NO_FINDING   flow       closed
 fs-branch-one-dirty      SqlInjectionChecker     dfa-taint-sql-injection          FINDING      flow       closed
 pt-field-cross-method    SqlInjectionChecker     dfa-taint-sql-injection          FINDING      points-to  closed
 pt-field-overwritten-cross-method SqlInjectionChecker dfa-taint-sql-injection      NO_FINDING   points-to  open

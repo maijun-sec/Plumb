@@ -174,6 +174,15 @@ public final class FieldTaintTracker {
   private final Map<String, TrackedTaint> thisFields = new HashMap<>();
 
   /**
+   * The {@code (receiver, field)} pairs this function overwrote with a value that carries no taint.
+   *
+   * <p>Separate from {@link #thisFields} on purpose: a clean write REMOVES the tracked taint, and a
+   * removal is indistinguishable from "never written" unless the write is remembered. The
+   * difference decides whether a read may fall back on the class-level answer.
+   */
+  private final java.util.Set<String> cleanWrites = new java.util.HashSet<>();
+
+  /**
    * Record a write to {@code this.<fieldName>} with the given taint state. Convenience overload for
    * the {@code this} case; delegates to {@link #recordWrite(String, String, String, List)} with
    * {@code receiver = "this"}.
@@ -280,6 +289,39 @@ public final class FieldTaintTracker {
    */
   public void clear() {
     thisFields.clear();
+    cleanWrites.clear();
+  }
+
+  /**
+   * Record that a field was written with a value that carries no taint.
+   *
+   * <p><b>Why the write is remembered when the taint state is cleared.</b> "The field holds no
+   * taint" and "the field was never written here" are different facts, and a field read needs to
+   * tell them apart. A read that finds no tracked taint falls back on the class-level answer -- the
+   * taint of whatever any function wrote to that field -- and that answer is right for a field this
+   * function never touched and WRONG for a field this function just overwrote with a clean value.
+   * The clean write is what tells the read which case it is.
+   *
+   * @param receiver the receiver whose field was written
+   * @param fieldName the field that was written
+   */
+  public void recordCleanWrite(String receiver, String fieldName) {
+    String k = keyOf(receiver, fieldName);
+    if (k == null) return;
+    cleanWrites.add(k);
+  }
+
+  /**
+   * Whether the field was written with a value that carries no taint, in this function.
+   *
+   * @param receiver the receiver whose field was read
+   * @param fieldName the field that was read
+   * @return true when this function overwrote the field with a clean value
+   */
+  public boolean isCleanWrite(String receiver, String fieldName) {
+    String k = keyOf(receiver, fieldName);
+    if (k == null) return false;
+    return cleanWrites.contains(k);
   }
 
   /** Clear taint for a single field on {@code this}. Convenience overload. */

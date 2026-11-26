@@ -94,8 +94,15 @@ class HardCaseSuiteTest {
    * The score the engine must not fall below.
    *
    * <p>It is the number of cases the engine gets right today. It only ever goes up.
+   *
+   * <p><b>Where the number came from.</b> 13 of the 15 cases, measured on the tree this change was
+   * made on: the three assignment cases ({@code fs-reassign-const}, {@code fs-param-reassign},
+   * {@code fs-field-reassign}) became passable when an assignment stopped keeping a taint it had
+   * already overwritten. The two that still fail are {@code fs-branch-both-clean} -- the join of
+   * two clean arms is still dirty, which is a different mechanism -- and {@code
+   * pt-field-overwritten-cross-method}, which is a points-to case.
    */
-  private static final int FLOOR = 10;
+  private static final int FLOOR = 13;
 
   private static final String MANIFEST = "/hardcases/manifest.tsv";
 

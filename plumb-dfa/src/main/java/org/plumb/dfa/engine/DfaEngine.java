@@ -2829,6 +2829,10 @@ public final class DfaEngine {
     // checker on every function. With 78 registered checkers that was 78 identical
     // CFG walks per function. It is cached per function below and reused.
     List<Integer> order = orderCacheFor(ctx).analysisOrder(fn);
+    // The block each instruction belongs to. The engine walks the function block by block, so it
+    // knows where the boundaries are -- and a checker that wanted them would have to build the
+    // same graph again. The map comes from the cached CFG, so it is one projection of one graph.
+    int[] blockOfIndex = orderCacheFor(ctx).blockOfIndex(fn);
     // The guard facts are a property of the FUNCTION, so they are collected once here and
     // shared by every checker, rather than each checker deriving its own. Two checkers
     // deriving their own is how they end up disagreeing about whether a value was guarded.
@@ -2844,6 +2848,10 @@ public final class DfaEngine {
         if (!supportsChecker(c, fn)) continue;
         try {
           c.initFunction(ctx, fn);
+          // The block the walk is currently in. The engine visits the function block by block,
+          // so the block changes between instructions and never inside one -- and a checker that
+          // tracks a path-sensitive fact needs to be told where the path-sensitive region ends.
+          int currentBlock = -1;
           for (int idx : order) {
             // Budget check. Once the per-function time budget is spent, stop walking this
             // function's instructions. The exhaustion is recorded by the budget, so the
@@ -2860,6 +2868,14 @@ public final class DfaEngine {
             // branches that lead to it. The checkers read this to ask "what was true
             // here?" rather than "what was true somewhere in this function".
             ctx.setCurrentInstructionIndex(idx);
+            // The block boundary. The instruction index alone cannot say where one block ends
+            // and the next begins: two consecutive blocks can hold consecutive indices, so the
+            // jump in the index says nothing. The block id does.
+            int blockId = idx < blockOfIndex.length ? blockOfIndex[idx] : -1;
+            if (blockId >= 0 && blockId != currentBlock) {
+              currentBlock = blockId;
+              c.enterBlock(ctx, fn, blockId);
+            }
             if (ins.kind == TacInstruction.Kind.CALL) {
               try {
                 recordModuleCrossing(ctx, fn, ins);

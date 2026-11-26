@@ -216,6 +216,15 @@ class R1115AllowlistSanitizerTest {
    * <p>The comparison is what makes the later substitution meaningful. Without it, any {@code x =
    * "safe"} anywhere would clear {@code x}, and the real taint on the fall-through would disappear
    * with it.
+   *
+   * <p><b>Why the assignment here is on ONE path.</b> The assignment used to be unconditional, and
+   * then the engine's taint lattice answered this case by itself: an assignment that overwrites the
+   * value before the sink leaves a literal at the sink, so there is nothing to report. That made
+   * the test unable to tell the two mechanisms apart -- a tracker that certified every literal
+   * assignment would have been indistinguishable from the lattice that is right about this program.
+   * Putting the assignment behind a branch makes the two mechanisms distinguishable again: on the
+   * path that skips it, the input still flows, and only the allowlist's own proof could have
+   * silenced it. The unconditional case is pinned separately, by the assignment-kill guard.
    */
   @Test
   void aLiteralAssignmentWithoutAComparisonIsStillReported() throws Exception {
@@ -224,10 +233,13 @@ class R1115AllowlistSanitizerTest {
             """
             import java.sql.*;
             class T {
-              String notAnAllowlist(Connection conn, String col) throws SQLException {
+              String notAnAllowlist(Connection conn, String col, boolean flag) throws SQLException {
                 Statement st = conn.createStatement();
-                // A plain reassignment. Nothing constrains `col`; this is a bug, not a sanitizer.
-                col = "id";
+                // A plain reassignment on ONE path. Nothing constrains `col`; this is a bug, not a
+                // sanitizer -- and on the path that skips it, the input is still `col`.
+                if (flag) {
+                  col = "id";
+                }
                 return st.executeQuery("SELECT * FROM t ORDER BY " + col + col).toString();
               }
             }
@@ -313,6 +325,13 @@ class R1115AllowlistSanitizerTest {
    * at the MOVE, so the mutation changes no behaviour today. If suppression is ever moved to the
    * sink -- which is the more obvious place, and the first thing tried in R1115 -- the same
    * mutation silently starts hiding findings.
+   *
+   * <p><b>Why the literal MOVE here is on ONE path.</b> An assignment that overwrites the value
+   * before the sink leaves a literal at the sink, and the engine's taint lattice says so by itself.
+   * The MOVE is therefore behind a branch: the path that skips it still carries the input, so a
+   * tracker that wrongly certified {@code other} would be caught -- and a tracker that is right is
+   * not distinguishable from the lattice on this program. The unconditional case is pinned
+   * separately, by the assignment-kill guard.
    */
   @Test
   void anOverCertifiedVariableDoesNotKeepItsTaintAfterALaterLiteralMove() throws Exception {
@@ -329,7 +348,9 @@ class R1115AllowlistSanitizerTest {
                 // `other` gets its own literal MOVE, but no guard ever constrained IT. If the
                 // guard on `col` were allowed to certify every compared variable, this MOVE would
                 // be treated as the proof and the second `other` below would be silenced.
-                other = "safe";
+                if (other != null) {
+                  other = "safe";
+                }
                 return st.executeQuery("SELECT * FROM t WHERE x = '" + other + "' ORDER BY " + other)
                     .toString();
               }

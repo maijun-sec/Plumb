@@ -23,6 +23,7 @@ package org.plumb.dfa.taint;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -273,6 +274,101 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * properties of one fact, and a finding names the label and is judged against the kind.
    */
   protected final Map<TacOperand.TacVar, TaintFact> taintedVars = new LinkedHashMap<>();
+
+  /**
+   * The facts an assignment removed, waiting for the block they happened in to end.
+   *
+   * <p><b>What this is for.</b> An assignment overwrites a variable with a value that carries no
+   * taint, and the variable then holds that value: the taint is gone. The engine's analysis is
+   * path-insensitive, though, and a variable can be reached by more than one path. A kill on one
+   * path does not reach a use on another path -- so removing the fact outright would delete a taint
+   * that is still live somewhere else, and the sink that really is reached by the tainted path
+   * would go unreported.
+   *
+   * <p>So the kill holds for the rest of the block it sits in, and the fact comes back when the
+   * block ends. That is the honest reading of what a single straight-line region can prove: the
+   * assignment happened before the use, on every path that reaches the use through this block.
+   *
+   * <p><b>What it does not claim.</b> A kill in one block does not reach a use in a later block,
+   * even when the assignment would in fact dominate that use. Proving that needs the dominator tree
+   * and a join at every merge point; until then, the fact is restored and the finding is reported.
+   * A conservative answer that keeps the true positive is the right direction for this lattice:
+   * taint is a MAY-property, and a lattice that loses a may-property loses findings.
+   *
+   * <p>Cleared at every function boundary by {@link #initFunction}.
+   */
+  private final Map<TacOperand.TacVar, TaintFact> killedTaints = new LinkedHashMap<>();
+
+  /**
+   * The paths that went with the facts in {@link #killedTaints}. Kept beside them because a
+   * restored fact needs its path back too: a finding names the source and shows the way it got
+   * there, and a fact without its path would produce a trace that starts in the middle.
+   */
+  private final Map<TacOperand.TacVar, List<FlowStep>> killedPaths = new LinkedHashMap<>();
+
+  /**
+   * Kill the taint of a variable: the assignment overwrites it with a value that carries none.
+   *
+   * <p>The fact leaves {@link #taintedVars} immediately -- the variable holds a clean value from
+   * here to the end of the block -- and is remembered in {@link #killedTaints} so that {@link
+   * #enterBlock} can put it back when the block ends.
+   *
+   * <p>A fact established by the instruction being processed is NOT killed: that fact is the
+   * instruction's own output, and "the right-hand side carries no taint" says nothing about it.
+   *
+   * @param v the variable whose value was overwritten
+   */
+  private void killTaint(TacOperand.TacVar v) {
+    if (v == null) return;
+    if (establishedHere.contains(v)) return;
+    TaintFact fact = taintedVars.remove(v);
+    List<FlowStep> path = taintPaths.remove(v);
+    if (fact != null) {
+      killedTaints.put(v, fact);
+    }
+    if (path != null) {
+      killedPaths.put(v, path);
+    }
+  }
+
+  /**
+   * The variables whose taint was established by the instruction being processed.
+   *
+   * <p>Used by {@link #killTaint} so that an instruction's own output is not taken back by that
+   * same instruction.
+   */
+  private final Set<TacOperand.TacVar> establishedHere = new HashSet<>();
+
+  /**
+   * The end of a basic block: the facts a kill removed come back.
+   *
+   * <p>The kill holds for the block it happened in, because on every path that reaches a later use
+   * through this block the assignment ran first. Past the block, another path may reach the use
+   * without running the assignment at all -- so the fact is restored, and the use sees the taint it
+   * would have seen without the kill.
+   *
+   * <p>A variable that was re-tainted after the kill keeps its NEW fact: the value it holds now is
+   * the one the later assignment put there, not the one the kill removed.
+   *
+   * @param ctx the analysis context
+   * @param fn the function being analysed
+   * @param blockId the block the analysis just entered
+   */
+  @Override
+  public void enterBlock(AnalysisContext ctx, TacFunction fn, int blockId) {
+    if (killedTaints.isEmpty()) return;
+    for (Map.Entry<TacOperand.TacVar, TaintFact> e : killedTaints.entrySet()) {
+      TacOperand.TacVar v = e.getKey();
+      if (taintedVars.containsKey(v)) continue;
+      taintedVars.put(v, e.getValue());
+      List<FlowStep> path = killedPaths.get(v);
+      if (path != null) {
+        taintPaths.put(v, path);
+      }
+    }
+    killedTaints.clear();
+    killedPaths.clear();
+  }
 
   /**
    * The label a variable carries, or {@code null} when it is not tainted.
@@ -1110,6 +1206,14 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   protected void markSource(
       TacOperand.TacVar v, String label, TacInstruction ins, String fnSig, String expr) {
     taintedVars.put(v, factFor(v, label));
+    // The fact was established BY THIS INSTRUCTION. A kill in the same instruction must not
+    // remove it: the script languages read their input out of a container, and the read is an
+    // ARRAYLOAD whose own handler marks the destination as the source. The MOVE propagation of
+    // that same instruction then sees a base that carries no taint -- the container is clean,
+    // the ENTRY is the source -- and would take the "the value carries no taint" branch. Killing
+    // there would erase the source the instruction had just established, and the value would
+    // never reach the sink.
+    establishedHere.add(v);
     int line = ins == null ? -1 : ins.line;
     int col = ins == null ? -1 : ins.column;
     String sig = fnSig == null ? "" : fnSig;
@@ -1186,6 +1290,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     taintLabelDepth.clear();
     typeEnv.clear();
     taintPaths.clear();
+    killedTaints.clear();
+    killedPaths.clear();
     sinkObservations.clear();
     pathConditionFragments.clear();
     thrownTaintByInsnIdentity.clear();
@@ -1341,6 +1447,9 @@ public abstract class TaintedCheckerBase implements DfaChecker {
 
   @Override
   public void checkInstruction(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
+    // The instruction being processed starts here, so the set of facts it establishes is
+    // the set it establishes from now on.
+    establishedHere.clear();
     // observe BEFORE the per-kind handlers, so the MOVE handler can see a completed
     // allowlist proof when it decides whether to keep the prior input label.
     //
@@ -2432,13 +2541,21 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       }
       if (priorLabel != null
           && (priorLabel.startsWith("param:") || priorLabel.startsWith("input:"))) {
-        // Keep the prior input/param label across
-        // the move; the rhs is either a literal
-        //  or a clean TacVar (-C
-        // extension). The next read of `data` is
-        // path-sensitive — the bad path may still
-        // have data carrying the input/param
-        // label.
+        // The value is overwritten with something that carries no taint -- a literal, or a
+        // clean TacVar (the -C extension). The variable holds that value from here on, so
+        // the taint is killed.
+        //
+        // The kill holds for the rest of THIS block, and not one instruction longer. The
+        // reason it used to be kept is still true -- the bad path may still carry the
+        // input -- but "the bad path" is a different BLOCK, and the fact is restored when
+        // the block ends. So the two requirements stop fighting: within the block the
+        // variable really does hold the clean value, and past the block the taint is back
+        // for the paths that never ran the assignment.
+        //
+        // The difference is visible in the corpus: `data = source; data = "literal"; sink(data)`
+        // in one straight-line region is not a finding any more, while the Juliet shape where
+        // the reassignment sits in a sibling branch still reports.
+        killTaint(dv);
         return;
       }
       taintedVars.remove(dv);
@@ -3852,7 +3969,19 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // The stored value is `ins.dest`
     // (per TacInstruction semantics:
     // `lhs1.fieldName = dest`).
-    if (!(ins.dest instanceof TacOperand.TacVar valueVar)) return;
+    if (!(ins.dest instanceof TacOperand.TacVar valueVar)) {
+      // A CONSTANT write: `this.f = "literal"`. The value carries no taint, and a clean
+      // write must clear the field's prior state -- last-write-wins.
+      //
+      // This case used to return without touching the field, so the field kept the taint of
+      // the write that came before it: `this.f = tainted; this.f = "literal"; read(this.f)`
+      // reported a finding on a field that holds a literal. The write is recorded as a clean
+      // write, so a later read in this function knows the field was overwritten rather than
+      // never written -- and does not fall back on the class-level answer, which belongs to
+      // a different function's write.
+      recordCleanFieldWrite(ins, fn, recv, recvName, ctx);
+      return;
+    }
     // Find the source param index for
     // the field write. The value may
     // be a direct param reference (e.g.
@@ -4167,6 +4296,60 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         crossFnClassFieldTaint.remove(classKey);
         crossFnClassFieldSource.remove(classKey);
       }
+    }
+  }
+
+  /**
+   * Record a write to a field whose value carries no taint.
+   *
+   * <p><b>What it does.</b> Three things, and the third is the one that matters:
+   *
+   * <ol>
+   *   <li>the field's per-function taint state is cleared -- the write overwrote it;
+   *   <li>the location-sensitive store's entry for the field is cleared -- same reason, at the
+   *       receiver's object rather than at the coarse (receiver, field) key;
+   *   <li>a CLEAN WRITE IS RECORDED, so a later read in this function can tell "this field was
+   *       overwritten with a clean value" from "this field was never written here".
+   * </ol>
+   *
+   * <p><b>Why the third one is needed.</b> A field read consults three answers, in order: the
+   * location-sensitive one, the coarse per-function one, and the class-level one. The class-level
+   * answer names the CLASS, not the object, so it carries whatever any function wrote to that
+   * field. When this function has just overwritten the field with a clean value, the class-level
+   * answer is stale for this object -- and a read that fell through to it would report a taint that
+   * this function's own write removed.
+   *
+   * <p><b>What it does not do.</b> It does not touch the class-level state itself. That state is
+   * program-wide, and another function's write may be the one that matters there; removing it here
+   * would delete a taint that is still live for a different object. The clean write is recorded per
+   * function, and the read consults it.
+   *
+   * @param ins the FIELDSTORE instruction
+   * @param fn the function being analysed
+   * @param recv the receiver
+   * @param recvName the resolved receiver name
+   * @param ctx the analysis context
+   */
+  private void recordCleanFieldWrite(
+      TacInstruction ins,
+      TacFunction fn,
+      TacOperand.TacVar recv,
+      String recvName,
+      AnalysisContext ctx) {
+    if (ins.fieldName == null || ins.fieldName.isEmpty()) return;
+    fieldTaintTracker.recordCleanWrite(recvName, ins.fieldName);
+    fieldTaintTracker.clearField(recvName, ins.fieldName);
+    org.plumb.dfa.points.PointsToSolver solver = ctx == null ? null : ctx.pointsToSolver();
+    if (solver == null) return;
+    List<org.plumb.tac.ir.TacAccessPath> paths;
+    try {
+      paths = AccessPathBuilder.fieldPaths(solver, fn.signature(), recv, ins.fieldName);
+    } catch (RuntimeException e) {
+      // A points-to query that fails costs the refinement, not the analysis.
+      return;
+    }
+    for (org.plumb.tac.ir.TacAccessPath path : paths) {
+      accessPathTaintStore.clear(path);
     }
   }
 
@@ -4529,6 +4712,14 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     }
     FieldTaintTracker.TrackedTaint tracked = fieldTaintTracker.readField(recvName, ins.fieldName);
     if (tracked == null) {
+      // The field was overwritten with a clean value in THIS function, so the field holds no
+      // taint here. The class-level answer below belongs to the CLASS -- it carries whatever
+      // any function wrote to that field -- and for this object it is stale: this function's
+      // own write removed it. Answering "clean" here is the last-write-wins rule applied to
+      // the object the receiver actually holds.
+      if (fieldTaintTracker.isCleanWrite(recvName, ins.fieldName)) {
+        return;
+      }
       // Unified cross-function
       // class-field read.
       String recvTypeName = classNameOfType(recv.type());

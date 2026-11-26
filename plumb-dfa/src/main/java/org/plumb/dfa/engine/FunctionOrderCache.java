@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import org.plumb.tac.ir.TacBasicBlock;
 import org.plumb.tac.ir.TacCfg;
 import org.plumb.tac.ir.TacCfgBuilder;
 import org.plumb.tac.ir.TacFunction;
@@ -97,10 +98,12 @@ public final class FunctionOrderCache {
   private static final class Entry {
     final TacCfg cfg;
     final List<Integer> order;
+    final int[] blockOfIndex;
 
-    Entry(TacCfg cfg, List<Integer> order) {
+    Entry(TacCfg cfg, List<Integer> order, int[] blockOfIndex) {
       this.cfg = cfg;
       this.order = order;
+      this.blockOfIndex = blockOfIndex;
     }
   }
 
@@ -124,12 +127,32 @@ public final class FunctionOrderCache {
     return entryFor(fn).cfg;
   }
 
+  /**
+   * The basic block each instruction index belongs to.
+   *
+   * <p>The index is the position in the function's instruction list; the value is the id of the
+   * block that contains it. An instruction that no block claims -- one the CFG builder could not
+   * place -- maps to {@code -1}, which reads as "no block", not as "block zero".
+   *
+   * <p><b>Why it is cached here.</b> The CFG is already cached here, and the map is a projection of
+   * it. Building it again per checker would mean 78 identical maps per function; and a checker that
+   * built its own would be answering "which block is this instruction in" from a second
+   * implementation of the block structure.
+   *
+   * @param fn the function
+   * @return the block id of each instruction index
+   */
+  public int[] blockOfIndex(TacFunction fn) {
+    return entryFor(fn).blockOfIndex;
+  }
+
   private Entry entryFor(TacFunction fn) {
     if (fn == null) {
       return new Entry(
           TacCfgBuilder.build(
               new TacFunction(" empty", " empty", null, List.of(), List.of(), List.of())),
-          List.of());
+          List.of(),
+          new int[0]);
     }
     // The identity of a function is its enclosing class TOGETHER with its signature. The bare
     // signature is not: a name is not an identity, and two classes can declare the same method.
@@ -149,7 +172,7 @@ public final class FunctionOrderCache {
     // a cache with its own copy of the algorithm would be a second source of truth.
     List<Integer> order = DfaEngine.analysisOrder(fn);
     TacCfg cfg = TacCfgBuilder.build(fn);
-    Entry entry = new Entry(cfg, order);
+    Entry entry = new Entry(cfg, order, blockOfIndex(fn, cfg));
     if (entries.size() >= MAX_ENTRIES) {
       // Simple eviction: drop one entry. The map is insertion-ordered enough for this to
       // approximate an LRU, and the cost of a stale miss is one recomputation.
@@ -160,6 +183,27 @@ public final class FunctionOrderCache {
     }
     entries.put(key, entry);
     return entry;
+  }
+
+  /**
+   * The block id of every instruction of the function, read off the control-flow graph.
+   *
+   * @param fn the function
+   * @param cfg the function's control-flow graph
+   * @return the block id of each instruction index; {@code -1} for an instruction no block claims
+   */
+  private static int[] blockOfIndex(TacFunction fn, TacCfg cfg) {
+    int n = fn.instructions().size();
+    int[] out = new int[n];
+    java.util.Arrays.fill(out, -1);
+    for (TacBasicBlock block : cfg.blocks()) {
+      for (Integer idx : block.indices()) {
+        if (idx != null && idx >= 0 && idx < n) {
+          out[idx] = block.id();
+        }
+      }
+    }
+    return out;
   }
 
   /** How many times the cache was hit. */
