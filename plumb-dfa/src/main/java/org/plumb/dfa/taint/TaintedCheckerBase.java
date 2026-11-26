@@ -1216,7 +1216,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     v2TraceHandle.clear();
     v2Builder = new TraceBuilder();
     v2SinkHandles.clear();
-    for (TacOperand.TacVar p : fn.params()) {
+    for (int paramIndex = 0; paramIndex < fn.params().size(); paramIndex++) {
+      TacOperand.TacVar p = fn.params().get(paramIndex);
       // ins=null means "no specific call site : the function entry
       // itself is the boundary".
       //
@@ -1242,6 +1243,23 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // sources when they are read (see markContainerBoundFieldSource).
       if (FrameworkFieldBindings.containerAnnotationFor(fn, p.name()) != null) {
         markCarrier(p, fn);
+        continue;
+      }
+      // A parameter whose EVERY observed call site passes a value the analysis
+      // can prove clean is not a source.
+      //
+      // Seeding it anyway is what makes "the caller passed something harmless"
+      // inexpressible: the method reports the flaw regardless of what any
+      // caller passed, and no amount of precision work elsewhere can fix it.
+      // The proof the contract demands is a positive one -- the caller passes a
+      // literal, or a variable whose every definition is provably clean, or a
+      // parameter that every call site of THAT parameter proves clean (which is
+      // what makes the proof transitive, and what lets a value survive a chain
+      // of helper methods) -- so this says "clean", never "probably clean".
+      //
+      // A parameter NOBODY calls stays a source: the entry boundary really is
+      // a trust boundary there, and that is the conservative answer.
+      if (ctx != null && ctx.isParamAlwaysClean(fn, paramIndex)) {
         continue;
       }
       markSource(p, "param:" + p.name(), null, fn.signature(), "param:" + p.name());
@@ -5442,7 +5460,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       String avLabel = labelOf(av);
       String avParamName = FrameworkEntryPoints.paramNameOf(avLabel);
       if (r1109ParamIdx >= 0
-          && ctx.isParamAlwaysClean(fn.signature(), r1109ParamIdx)
+          && ctx.isParamAlwaysClean(fn, r1109ParamIdx)
           && avParamName != null
           && avParamName.equals(av.name())) {
         LOG.debug(

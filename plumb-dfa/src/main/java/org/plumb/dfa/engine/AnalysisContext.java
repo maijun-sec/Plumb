@@ -28,6 +28,7 @@ import org.plumb.dfa.fact.FactBag;
 import org.plumb.dfa.summary.FunctionSummaryCache;
 import org.plumb.dfa.summary.MethodSummaryCache;
 import org.plumb.dfa.summary.SideEffectConsumer;
+import org.plumb.tac.ir.TacFunction;
 import org.plumb.tac.ir.TacProgram;
 
 /**
@@ -446,7 +447,15 @@ public final class AnalysisContext {
   /**
    * parameters whose every observed call site passes a value the analysis can prove clean.
    *
-   * <p>Keyed the same way as {@link #paramOrigins}: {@code "signature#paramIndex"}.
+   * <p>Keyed by the function's MERGED key ({@code org.plumb.tac.ir.MergedProgram#mergedKey}) and
+   * the parameter's index: {@code "enclosingClass :: signature#paramIndex"}.
+   *
+   * <p><b>Why the merged key and not the bare signature.</b> The bare signature is ambiguous in a
+   * merged program: thousands of same-named methods share one signature. Pooling their cleanliness
+   * entries makes the transitive proof circular -- the second hop of a chain is clean only if the
+   * first hop is, and pooling merges the two -- so the proof stays at its least fixed point and
+   * never starts. The origin map may pool, because it detects the collision and drops the entry;
+   * cleanliness has no disagreement to detect.
    *
    * <h3>Why this exists</h3>
    *
@@ -459,10 +468,14 @@ public final class AnalysisContext {
    * <h3>The contract, and why it is narrow on purpose</h3>
    *
    * <p>An entry is present only when the parameter has at least one resolved call site and
-   * <em>every</em> one of them passes a literal. A literal is the only form of positive proof
-   * available here: the absence of a taint label on a variable is <em>not</em> proof of
-   * cleanliness, because a variable only gains a label once something tainted reaches it, so an
-   * unlabelled variable is far more often "unanalysed" than "safe".
+   * <em>every</em> one of them passes a value the analysis can prove clean. A literal is the
+   * simplest such proof, but not the only one: a variable whose every definition is provably clean
+   * is one too, and the proof is TRANSITIVE — a parameter that every caller passes cleanly is
+   * itself clean, which is what lets a value survive a chain of helper methods.
+   *
+   * <p>What is NOT a proof: the absence of a taint label on a variable. A variable only gains a
+   * label once something tainted reaches it, so an unlabelled variable is far more often
+   * "unanalysed" than "safe".
    *
    * <p>Absent means "unknown", and every consumer must keep its previous behaviour on absent.
    */
@@ -479,11 +492,19 @@ public final class AnalysisContext {
   /**
    * Is this parameter known to receive only provably-clean values?
    *
+   * <p>The parameter is identified by the FUNCTION it belongs to, not by a signature string,
+   * because the merged program gives thousands of same-named methods ONE signature. See the note on
+   * {@link #paramCleanliness}.
+   *
+   * @param fn the function the parameter belongs to
+   * @param paramIndex the parameter's index
    * @return {@code false} when unknown, which callers must treat as "no information" rather than as
    *     "dirty".
    */
-  public boolean isParamAlwaysClean(String signature, int paramIndex) {
-    return Boolean.TRUE.equals(paramCleanliness.get(signature + "#" + paramIndex));
+  public boolean isParamAlwaysClean(TacFunction fn, int paramIndex) {
+    if (fn == null) return false;
+    return Boolean.TRUE.equals(
+        paramCleanliness.get(org.plumb.tac.ir.MergedProgram.mergedKey(fn) + "#" + paramIndex));
   }
 
   public EngineConfig config() {

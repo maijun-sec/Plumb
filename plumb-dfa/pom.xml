@@ -196,6 +196,10 @@
                              name twice: the call site can only name the class by its simple
                              name, and a call that names no class names the caller's own. -->
                         <include>org/plumb/dfa/taint/ParamOriginSurvivesASameNamedMethodTest.java</include>
+                        <!-- The parameter cleanliness follows the call site: a parameter every
+                             call site fills with a provably clean value is not a source, and
+                             the proof survives a two-hop chain of same-named methods. -->
+                        <include>org/plumb/dfa/taint/ParamCleanlinessFollowsTheCallSiteTest.java</include>
                         <!-- The Go sink catalogue: the Go front end's symbols must
                              be the ones the catalogue names, and the Go
                              accumulators must carry the taint both ways. -->

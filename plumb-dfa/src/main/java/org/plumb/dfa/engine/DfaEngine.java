@@ -1176,8 +1176,19 @@ public final class DfaEngine {
     HashSet<String> ambiguous = new HashSet<>();
     // parameters every observed call site supplies with a value the analysis can
     // positively prove clean. See setParamCleanliness for the contract.
-    HashSet<String> cleanArgs = new HashSet<>();
-    HashSet<String> dirtyArgs = new HashSet<>();
+    //
+    // THE VERDICTS ARE RECOMPUTED EVERY ROUND, never accumulated across rounds.
+    //
+    // <p>How clean a call site's argument is depends on how much of the program
+    // the analysis has proved clean SO FAR. An argument that is "not yet provably
+    // clean" in one round can be "provably clean" in the next, because the proof
+    // it needs is a parameter that another round proved clean.
+    //
+    // <p>Accumulating the verdicts would freeze the early, weaker ones, and the
+    // transitive proof could then never START: the second hop's argument is the
+    // first hop's parameter, so the second hop is only clean once the first hop
+    // is -- and the first hop's verdict is exactly what the accumulation froze.
+    // The result was a proof that stayed at its least fixed point forever.
 
     // The function list, taken ONCE.
     //
@@ -1207,6 +1218,42 @@ public final class DfaEngine {
     // ran every round it was allowed -- each one redoing the same work. The
     // scan did not get slow; it stopped finishing.
     HashMap<String, HashMap<String, String>> localLabel = new HashMap<>();
+
+    // The variables whose value the analysis can PROVE clean.
+    //
+    // <p>This is the positive proof the caller-cleanliness contract needs, and it is the
+    // DUAL of the label flow above: a label says where a tainted value came from, and the
+    // absence of a label says nothing (a variable the model did not follow carries no
+    // label either, and that is "unanalysed", not "safe"). A "clean" fact says the opposite
+    // -- the value is safe -- and it can only be derived from a positive proof.
+    //
+    // <p>The rules are the duals of the label rules:
+    //
+    // <ul>
+    //   <li>a MOVE from a LITERAL is clean;
+    //   <li>a MOVE from a CLEAN variable is clean;
+    //   <li>a MOVE from a parameter the call-site evidence proves clean is clean;
+    //   <li>anything else KILLS the fact -- a call's result, a concatenation, a field read.
+    // </ul>
+    //
+    // <p>The third rule is what makes the proof TRANSITIVE, and transitivity is what the
+    // multi-hop chains need: a value that reaches a sink through two helper methods is
+    // clean at the second hop only if the first hop's parameter was clean, and the first
+    // hop's parameter is clean only if ITS caller passed a clean value.
+    //
+    // <p>Keyed by the merged key, like the label map. Recomputed every round: the rule is
+    // round-independent (a variable is clean when EVERY definition of it is clean), so
+    // recomputing cannot drift.
+    HashMap<String, HashSet<String>> localClean = new HashMap<>();
+
+    // The parameters whose every observed call site passes a value the analysis can prove
+    // clean. Published from the previous round, because the evidence for a call site is
+    // only complete after the round that produced it -- and a chain of helpers needs
+    // several rounds to settle.
+    //
+    // <p>Keyed by the MERGED key of the parameter, NOT by the bare signature. See
+    // cleanKey for why the bare signature makes the transitive proof impossible.
+    HashSet<String> alwaysCleanParams = new HashSet<>();
 
     // The labels of the SHARED CELLS -- a storage location that more than one
     // function reads and writes. Keyed by "<receiver>.<field>", the same shape the
@@ -1296,13 +1343,42 @@ public final class DfaEngine {
     for (int round = 0; round < maxRounds; round++) {
       boolean changed = false;
 
+      // THIS ROUND'S verdicts on the call sites, rebuilt from scratch. See the
+      // note above on why they are not accumulated across rounds.
+      HashSet<String> roundClean = new HashSet<>();
+      HashSet<String> roundDirty = new HashSet<>();
+
       // (a) intra-procedural propagation over each function's instructions
       for (TacFunction fn : fns) {
         HashMap<String, String> lab = localLabel.get(mergedKeyOf(fn));
         if (lab == null) continue;
+        // The CLEAN facts of this function: a variable is clean when EVERY one of
+        // its definitions is provably clean.
+        //
+        // <p>This is the DUAL of the label map above. A label says where a tainted
+        // value came from, and the ABSENCE of a label says nothing -- a variable the
+        // model did not follow carries no label either, and that is "unanalysed",
+        // not "safe". A clean fact says the opposite: the value is safe, and it
+        // can only come from a positive proof.
+        HashMap<String, Boolean> cleanVars = new HashMap<>();
+        // A parameter the call-site evidence proves clean enters the function
+        // clean; every other parameter enters NOT clean. A parameter that is not
+        // clean is not "unknown" -- it is a trust boundary, and the entry-boundary
+        // seed says so.
+        for (int i = 0; i < fn.params().size(); i++) {
+          cleanVars.put(fn.params().get(i).name(), alwaysCleanParams.contains(cleanKey(fn, i)));
+        }
         for (TacInstruction ins : fn.instructions()) {
           String destName = destVarName(ins);
           if (destName == null) continue;
+
+          // The CLEAN fact this definition carries, or null when the instruction
+          // does not define a new value.
+          Boolean fact = cleanFactOf(ins, cleanVars);
+          if (fact != null) {
+            // "EVERY definition is provably clean", not "the last one is".
+            cleanVars.put(destName, cleanVars.getOrDefault(destName, Boolean.TRUE) && fact);
+          }
 
           switch (ins.kind) {
             case CALL -> {
@@ -1376,6 +1452,11 @@ public final class DfaEngine {
             }
           }
         }
+        HashSet<String> cleanNames = new HashSet<>();
+        for (Map.Entry<String, Boolean> e : cleanVars.entrySet()) {
+          if (Boolean.TRUE.equals(e.getValue())) cleanNames.add(e.getKey());
+        }
+        localClean.put(mergedKeyOf(fn), cleanNames);
       }
 
       // (b) cross-function transfer.
@@ -1397,7 +1478,26 @@ public final class DfaEngine {
                   byBareAndSimpleClass,
                   call.calleeSig,
                   caller.enclosingClass());
-          if (callee == null) continue;
+          if (callee == null) {
+            // The call names a method the program HAS, but the call site could not
+            // pick WHICH one -- an overload set, or the same method name in many
+            // classes of a merged corpus. Any of those candidates may receive this
+            // argument, so none of them may claim "every call site passes a clean
+            // value".
+            //
+            // Without this, an unresolvable call site is INVISIBLE to the contract:
+            // the parameter keeps the verdict of its other call sites, and a call
+            // that may hand it a tainted value is not counted at all.
+            List<TacFunction> candidates = byBare.get(nameArityOfCall(call.calleeSig));
+            if (candidates != null) {
+              for (TacFunction candidate : candidates) {
+                for (int j = 0; j < candidate.params().size(); j++) {
+                  roundDirty.add(cleanKey(candidate, j));
+                }
+              }
+            }
+            continue;
+          }
           List<org.plumb.tac.ir.TacOperand> args = call.args;
           // Where the caller's FIRST USER ARGUMENT sits in the operand list.
           //
@@ -1421,6 +1521,12 @@ public final class DfaEngine {
             firstArg = 0; // no receiver slot: the call names no class at all
           } else {
             firstArg = -1; // the operands do not add up: do not guess
+            // The arguments cannot be mapped, so this call site carries NO verdict --
+            // and a call site with no verdict must not leave the callee's parameters
+            // free to claim "every call site passes a clean value".
+            for (int j = 0; j < callee.params().size(); j++) {
+              roundDirty.add(cleanKey(callee, j));
+            }
           }
           for (int j = 0; firstArg >= 0 && j < callee.params().size(); j++) {
             int argIdx = j + firstArg;
@@ -1435,12 +1541,29 @@ public final class DfaEngine {
             // ordering mistake is invisible in the output -- the map is simply empty
             // and the gate silently does nothing.
             if (!(args.get(argIdx) instanceof org.plumb.tac.ir.TacOperand.TacVar)) {
-              cleanArgs.add(k);
+              roundClean.add(cleanKey(callee, j));
               continue;
             }
-            dirtyArgs.add(k);
-            if (!(args.get(argIdx) instanceof org.plumb.tac.ir.TacOperand.TacVar av)) {
-              continue;
+            org.plumb.tac.ir.TacOperand.TacVar av =
+                (org.plumb.tac.ir.TacOperand.TacVar) args.get(argIdx);
+            // A variable whose every definition in the caller is PROVABLY CLEAN holds a
+            // value the analysis can prove clean, so the callee receives a clean
+            // argument here.
+            //
+            // This is the positive proof the contract needs. "The argument carries no
+            // taint label" would NOT be one: a variable the model did not follow
+            // carries no label either, and that is "unanalysed", not "safe". A
+            // variable whose every definition is provably clean is safe, and saying so
+            // is a statement about the program rather than about the model's coverage.
+            //
+            // The verdict does NOT skip the origin propagation below: the origin of a
+            // clean value is still worth recording, and the pre-existing behaviour for
+            // a non-literal argument is to propagate it.
+            HashSet<String> callerClean = localClean.get(mergedKeyOf(caller));
+            if (callerClean != null && callerClean.contains(av.name())) {
+              roundClean.add(cleanKey(callee, j));
+            } else {
+              roundDirty.add(cleanKey(callee, j));
             }
             String src = lab.get(av.name());
             if (src == null) continue;
@@ -1467,6 +1590,21 @@ public final class DfaEngine {
         }
       }
 
+      // (c) publish the clean fixed point.
+      //
+      // This round's verdicts are a FUNCTION of the previous round's clean
+      // parameters, so the sequence is monotone: a parameter that is proved clean
+      // adds clean facts, and a clean fact can only turn a "not provably clean"
+      // verdict into a "provably clean" one. The least fixed point is therefore
+      // reached by iterating, and it is the sound one -- every clean fact is
+      // derived from a literal somewhere below it.
+      HashSet<String> nextAlwaysClean = new HashSet<>(roundClean);
+      nextAlwaysClean.removeAll(roundDirty);
+      if (!nextAlwaysClean.equals(alwaysCleanParams)) {
+        alwaysCleanParams = nextAlwaysClean;
+        changed = true;
+      }
+
       if (!changed) break;
     }
 
@@ -1474,13 +1612,13 @@ public final class DfaEngine {
       origin.remove(k);
     }
     ctx.setParamOrigins(Map.copyOf(origin));
-    // only parameters with at least one call site and no non-literal call site count
-    // as clean. A parameter nobody calls keeps "unknown", which preserves the historical
-    // behaviour where a method analysed as an entry point still treats its parameters as
-    // trust boundaries.
+    // Only parameters with at least one call site and no call site that is not
+    // provably clean count as clean. A parameter nobody calls keeps "unknown",
+    // which preserves the historical behaviour where a method analysed as an entry
+    // point still treats its parameters as trust boundaries.
     java.util.Map<String, Boolean> clean = new java.util.LinkedHashMap<>();
-    for (String k : cleanArgs) {
-      if (!dirtyArgs.contains(k)) clean.put(k, Boolean.TRUE);
+    for (String k : alwaysCleanParams) {
+      clean.put(k, Boolean.TRUE);
     }
     ctx.setParamCleanliness(java.util.Collections.unmodifiableMap(clean));
     /* diag removed */
@@ -1490,6 +1628,106 @@ public final class DfaEngine {
   private static String destVarName(TacInstruction ins) {
     if (ins == null) return null;
     return (ins.dest instanceof org.plumb.tac.ir.TacOperand.TacVar d) ? d.name() : null;
+  }
+
+  /**
+   * The key of a PARAMETER in the cleanliness map.
+   *
+   * <p><b>Why this is the MERGED key and not the bare signature.</b>
+   *
+   * <p>The bare signature is ambiguous in a merged program: a corpus that declares the same method
+   * name in thousands of files gives thousands of functions ONE signature, and every one of them
+   * would share a single cleanliness entry.
+   *
+   * <p>Sharing is not a precision problem here, it is a CORRECTNESS problem. The cleanliness of a
+   * parameter depends on the cleanliness of its callers' arguments, and a caller of {@code
+   * B.goodG2BSink} is itself a {@code goodG2BSink} in another class. Pooling the two makes the
+   * proof CIRCULAR: the second hop is clean only if the first hop is, and the first hop's verdict
+   * is exactly what the pooling merged. The iteration then stays at its least fixed point forever,
+   * and the proof never starts -- which is precisely the case this mechanism exists for.
+   *
+   * <p>The origin map may pool by the bare signature, because it DETECTS the collision and drops
+   * the entry when two different origins disagree. Cleanliness has no such disagreement to detect:
+   * a collision there is a circular dependency, not a conflict.
+   *
+   * @param fn the function
+   * @param paramIndex the parameter's index
+   * @return the key
+   */
+  private static String cleanKey(TacFunction fn, int paramIndex) {
+    return mergedKeyOf(fn) + "#" + paramIndex;
+  }
+
+  /**
+   * The CLEAN fact an instruction's destination carries, or {@code null} when the instruction does
+   * not define a new value.
+   *
+   * <p>The rules are the duals of the label rules:
+   *
+   * <ul>
+   *   <li>a MOVE from a LITERAL is clean;
+   *   <li>a MOVE from a CLEAN variable is clean;
+   *   <li>a MOVE from a parameter the call-site evidence proves clean is clean;
+   *   <li>a BINOP is clean when BOTH of its operands are clean;
+   *   <li>a STORE defines nothing -- the value it stores was defined earlier;
+   *   <li>anything else KILLS the fact: a call's result, a field read, a fresh object.
+   * </ul>
+   *
+   * <p>The third rule is what makes the proof TRANSITIVE, and transitivity is what the multi-hop
+   * chains need: a value that reaches a sink through two helper methods is clean at the second hop
+   * only if the first hop's parameter was clean, and the first hop's parameter is clean only if ITS
+   * caller passed a clean value.
+   *
+   * @param ins the instruction
+   * @param cleanVars the clean facts known so far in the function
+   * @return the fact, or {@code null}
+   */
+  private static Boolean cleanFactOf(TacInstruction ins, HashMap<String, Boolean> cleanVars) {
+    if (ins == null) return null;
+    switch (ins.kind) {
+      case MOVE -> {
+        return isCleanOperand(ins.lhs1, cleanVars);
+      }
+      case BINOP -> {
+        // BOTH operands have to be clean: a concatenation of a clean and a tainted
+        // value is tainted.
+        return isCleanOperand(ins.lhs1, cleanVars) && isCleanOperand(ins.lhs2, cleanVars);
+      }
+      case UNARYOP -> {
+        return isCleanOperand(ins.lhs1, cleanVars);
+      }
+      case FIELDSTORE, ARRAYSTORE -> {
+        // A STORE does not define a new value: the value it stores was defined
+        // earlier, and that definition decided whether it is clean.
+        return null;
+      }
+      default -> {
+        // A call's result, a field read, a fresh object: nothing here is a
+        // positive proof of cleanliness.
+        return Boolean.FALSE;
+      }
+    }
+  }
+
+  /**
+   * Whether an operand carries a value the analysis can prove clean.
+   *
+   * <p>A literal is the one form of proof that needs no data flow. A variable is clean when the
+   * function's clean facts say so.
+   *
+   * @param op the operand
+   * @param cleanVars the clean facts known so far in the function
+   * @return whether the operand is provably clean
+   */
+  private static boolean isCleanOperand(
+      org.plumb.tac.ir.TacOperand op, HashMap<String, Boolean> cleanVars) {
+    if (op instanceof org.plumb.tac.ir.TacOperand.Const) {
+      return true;
+    }
+    if (op instanceof org.plumb.tac.ir.TacOperand.TacVar v) {
+      return Boolean.TRUE.equals(cleanVars.get(v.name()));
+    }
+    return false;
   }
 
   /**
@@ -1814,9 +2052,9 @@ public final class DfaEngine {
    */
   private static String mergedKeyOf(TacFunction fn) {
     if (fn == null) return "";
-    String enc = fn.enclosingClass();
-    if (enc == null || enc.isEmpty()) return fn.signature();
-    return enc + " :: " + fn.signature();
+    // The merged key is the merged view's OWN key, so it is taken from there rather
+    // than spelled out a third time in this file.
+    return org.plumb.tac.ir.MergedProgram.mergedKey(fn);
   }
 
   /**
