@@ -218,6 +218,11 @@
                              literal: the caller that reads it sees the
                              literal, not the class-level answer. -->
                         <include>org/plumb/dfa/taint/CrossMethodFieldCleanWriteTest.java</include>
+                        <!-- A path condition is about a VALUE, not about a
+                             variable name: the guard on a copy constrains the
+                             original, and the guard on the value constrains the
+                             temporary the sink receives. -->
+                        <include>org/plumb/dfa/taint/ValueAliasGuardTest.java</include>
                         <!-- The Go sink catalogue: the Go front end's symbols must
                              be the ones the catalogue names, and the Go
                              accumulators must carry the taint both ways. -->

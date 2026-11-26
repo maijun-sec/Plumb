@@ -867,6 +867,28 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private static final AccessPathTaintStore accessPathTaintStore = new AccessPathTaintStore();
 
   /**
+   * Per-function tracker of which names hold the SAME VALUE.
+   *
+   * <p>A path condition is a statement about a value, not about a name. The guard on a value and
+   * the sink that receives it are usually written with different names — the guard is on the
+   * variable, the sink's argument is a temporary — so the guards of the value have to be found
+   * through the value, not through the name. This tracker is that link: a copy makes two names one
+   * value, and a guard on either of them constrains the other.
+   *
+   * <p>Cleared at every function boundary, like the other per-function trackers.
+   */
+  private final ValueAliasTracker valueAliases = new ValueAliasTracker();
+
+  /**
+   * The index of the instruction being processed, or {@code -1} when it is unknown.
+   *
+   * <p>The engine publishes it on the context before every instruction; this field is the checker's
+   * own copy of it, so the propagation helpers can record WHERE a fact was established without
+   * having to thread the context through every signature.
+   */
+  private int currentInstructionIndex = -1;
+
+  /**
    * Per-function per-element array taint tracker ( T1). Tracks {@code a[i] = tainted} writes and
    * propagates the taint to {@code x = a[i]} reads. Promotes the array to {@link
    * ArrayTaintTracker#ANY} when the index itself is tainted (one tainted write touches all
@@ -1478,6 +1500,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     fieldOps.clear();
     fieldTaintTracker.clear();
     arrayTaintTracker.clear(); // R694 T1
+    valueAliases.clear();
+    currentInstructionIndex = -1;
     iteratorTaint.clear();
     classRefVars.clear();
     // per-function allowlist proof. Carried per checker like the other trackers, because the
@@ -1623,6 +1647,10 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // The instruction being processed starts here, so the set of facts it establishes is
     // the set it establishes from now on.
     establishedHere.clear();
+    // Where this instruction sits. The engine publishes it on the context; the
+    // checker's own copy is what the propagation helpers record against, so a
+    // fact knows WHEN it was established and not merely that it was.
+    currentInstructionIndex = ctx == null ? -1 : ctx.currentInstructionIndex();
     // observe BEFORE the per-kind handlers, so the MOVE handler can see a completed
     // allowlist proof when it decides whether to keep the prior input label.
     //
@@ -2618,6 +2646,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (ins.dest == null || !(ins.dest instanceof TacOperand.TacVar dv)) {
       return;
     }
+    // The destination now holds a NEW value, so it leaves whatever group it was
+    // in. The alias is re-established below when the new value is a copy of the
+    // source's. (The kill comes first on purpose: an assignment ends the old
+    // relation even when the new value is another copy.)
+    valueAliases.kill(dv.name(), currentInstructionIndex);
     // A MOVE that copies an array reference makes the destination name the SAME
     // array. The per-element taint recorded against the source therefore
     // applies to the destination too. This is what makes an array initializer
@@ -2629,6 +2662,16 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       arrayTaintTracker.alias(arraySrc, dv);
     }
     if (ins.lhs1 instanceof TacOperand.TacVar sv && taintedVars.containsKey(sv)) {
+      // A COPY makes the two names one value. A guard on either of them then
+      // constrains the other, which is what lets a path condition reach a sink
+      // whose argument is a temporary. A UNARYOP derives its value FROM the
+      // source, so the source's bounds still constrain it -- the guard facts
+      // keep their own names, so the arithmetic itself is never claimed to be
+      // the same value. A FIELDLOAD / ARRAYLOAD is NOT a copy: the element is
+      // not the container, so no alias is made there.
+      if (ins.kind == TacInstruction.Kind.MOVE || ins.kind == TacInstruction.Kind.UNARYOP) {
+        valueAliases.alias(dv.name(), sv.name(), currentInstructionIndex);
+      }
       taintedVars.put(dv, factFor(dv, labelOf(sv)));
       List<FlowStep> srcPath = taintPaths.get(sv);
       List<FlowStep> newPath = new ArrayList<>();
@@ -2887,6 +2930,11 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (ins.dest == null || !(ins.dest instanceof TacOperand.TacVar dv)) {
       return;
     }
+    // The destination holds a NEW value: it leaves whatever group it was in, and
+    // the operands join it below. A concatenation is the shape that matters most
+    // here -- the sink's argument is usually the temporary a concatenation
+    // produces, and the guard is on the value that went into it.
+    valueAliases.kill(dv.name(), currentInstructionIndex);
     String l1Label =
         (ins.lhs1 instanceof TacOperand.TacVar lv && taintedVars.containsKey(lv))
             ? labelOf(lv)
@@ -2895,6 +2943,15 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         (ins.lhs2 instanceof TacOperand.TacVar rv && taintedVars.containsKey(rv))
             ? labelOf(rv)
             : null;
+    // The destination is derived FROM the tainted operand, so the guards of that
+    // operand's value constrain it. This is the shape that lets a path condition
+    // reach a sink whose argument is the temporary a concatenation produced.
+    if (l1Label != null && ins.lhs1 instanceof TacOperand.TacVar lv) {
+      valueAliases.alias(dv.name(), lv.name(), currentInstructionIndex);
+    }
+    if (l2Label != null && ins.lhs2 instanceof TacOperand.TacVar rv) {
+      valueAliases.alias(dv.name(), rv.name(), currentInstructionIndex);
+    }
     List<FlowStep> l1Path = (ins.lhs1 instanceof TacOperand.TacVar lv) ? taintPaths.get(lv) : null;
     List<FlowStep> l2Path = (ins.lhs2 instanceof TacOperand.TacVar rv) ? taintPaths.get(rv) : null;
     if (l1Label != null && l2Label != null) {
@@ -6175,12 +6232,28 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     // both in force at the sink.
     java.util.List<org.plumb.dfa.taint.GuardTracker.Guard> guards = pathScopedGuards(tracker, ctx);
     if (guards == null || guards.isEmpty()) return out;
+    // The guards that talk about the VALUE reaching the sink -- not only about the
+    // sink argument's own NAME. A copy makes two names one value, and the guard is
+    // usually written on one of them while the sink receives the other:
+    //
+    //     int copy = n;
+    //     if (copy > 5 && copy < 3) { sink(n); }
+    //
+    // The names differ, the value does not. Without this the condition was empty and
+    // the solver was never asked anything.
+    //
+    // The facts are re-spelled with the sink argument's name, because after the
+    // merge they are statements about ONE value: two facts about the same value
+    // have to carry the same name for the contradiction check to compare them.
+    java.util.Set<String> sameValue =
+        valueAliases.groupAt(av.name(), ctx.currentInstructionIndex());
     for (org.plumb.dfa.taint.GuardTracker.Guard g : guards) {
       if (g == null) continue;
-      if (!g.boundedVar().name().equals(av.name())) continue;
+      String guarded = g.boundedVar().name();
+      if (!sameValue.contains(guarded)) continue;
       out.add(
           new org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact(
-              g.boundedVar().name(), g.op(), g.literalDescription(), g.isArrayLengthBound()));
+              av.name(), g.op(), g.literalDescription(), g.isArrayLengthBound()));
     }
     return out;
   }

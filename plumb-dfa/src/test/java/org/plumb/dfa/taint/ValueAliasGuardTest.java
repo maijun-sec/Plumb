@@ -1,0 +1,276 @@
+/*
+ * Copyright (c) 2026 maijun
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+package org.plumb.dfa.taint;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.plumb.dfa.checkers.taint.SqlInjectionChecker;
+import org.plumb.dfa.config.ConfigLoader;
+import org.plumb.dfa.config.EngineConfig;
+import org.plumb.dfa.engine.DfaEngine;
+import org.plumb.dfa.engine.FindingReporter;
+import org.plumb.parser.JavaSourceParser;
+import org.plumb.parser.ParsedSource;
+import org.plumb.reporter.Finding;
+import org.plumb.tac.ir.TacProgram;
+import org.plumb.tac.translate.TacTranslator;
+
+/**
+ * A path condition is a statement about a VALUE, not about a variable name.
+ *
+ * <h2>What was wrong</h2>
+ *
+ * <p>The engine built the path condition from the guards recorded against the sink argument's own
+ * NAME. That works while the guard and the sink talk about the same name — and it stops working the
+ * moment they do not, which is the common case:
+ *
+ * <pre>{@code
+ * int copy = n;
+ * if (copy > 5 && copy < 3) {   // the guard is on `copy`
+ *     st.executeQuery("..." + n + "...");   // the sink's argument is `n`
+ * }
+ * }</pre>
+ *
+ * <p>Here the value that reaches the sink is the one the guard talks about — the two NAMES differ,
+ * the VALUE does not — so the condition came out empty and the solver was never asked anything. On
+ * the corpus this meant the solver was consulted <em>zero</em> times in 2,886 groups.
+ *
+ * <h2>What is asserted</h2>
+ *
+ * <ul>
+ *   <li>a guard on a COPY of the value constrains the original ⇒ NOT reported;
+ *   <li>a guard on the value constrains the CONCATENATION of it ⇒ NOT reported;
+ *   <li>a guard on an UNRELATED variable says nothing about this value ⇒ still reported;
+ *   <li>a guard that does not make the path unreachable ⇒ still reported;
+ *   <li>an assignment ENDS the relation ⇒ a guard on the old copy no longer silences the original.
+ * </ul>
+ *
+ * <p>The last three are the controls: without them, "the guard applied" and "the engine stopped
+ * reporting" would be the same claim.
+ */
+class ValueAliasGuardTest {
+
+  /** The guard is on a copy; the sink receives the original. */
+  private static final String GUARD_ON_COPY =
+      """
+      package mini;
+      import java.sql.SQLException;
+      import java.sql.Statement;
+      public class GuardOnCopy {
+        public void go(Statement st, java.io.BufferedReader reader) throws Exception {
+          int n = Integer.parseInt(reader.readLine());
+          int copy = n;
+          if (copy > 5 && copy < 3) {
+            st.executeQuery("SELECT * FROM t WHERE c = '" + n + "'");
+          }
+        }
+      }
+      """;
+
+  /** The guard is on the value; the sink receives a concatenation of it. */
+  private static final String GUARD_ON_CONCAT =
+      """
+      package mini;
+      import java.sql.SQLException;
+      import java.sql.Statement;
+      public class GuardOnConcat {
+        public void go(Statement st, java.io.BufferedReader reader) throws Exception {
+          int n = Integer.parseInt(reader.readLine());
+          if (n > 5 && n < 3) {
+            st.executeQuery("SELECT * FROM t WHERE c = '" + n + "'");
+          }
+        }
+      }
+      """;
+
+  /** The guard is on a DIFFERENT value: it says nothing about this one. */
+  private static final String GUARD_ON_UNRELATED =
+      """
+      package mini;
+      import java.sql.SQLException;
+      import java.sql.Statement;
+      public class GuardOnUnrelated {
+        public void go(Statement st, java.io.BufferedReader reader) throws Exception {
+          int n = Integer.parseInt(reader.readLine());
+          int m = Integer.parseInt(reader.readLine());
+          if (m > 5 && m < 3) {
+            st.executeQuery("SELECT * FROM t WHERE c = '" + n + "'");
+          }
+        }
+      }
+      """;
+
+  /** The guard is satisfiable: the path it describes really exists. */
+  private static final String REACHABLE_GUARD =
+      """
+      package mini;
+      import java.sql.SQLException;
+      import java.sql.Statement;
+      public class ReachableGuard {
+        public void go(Statement st, java.io.BufferedReader reader) throws Exception {
+          int n = Integer.parseInt(reader.readLine());
+          int copy = n;
+          if (copy > 5 && copy < 100) {
+            st.executeQuery("SELECT * FROM t WHERE c = '" + n + "'");
+          }
+        }
+      }
+      """;
+
+  /** The copy is overwritten before the sink, so it no longer holds the original's value. */
+  private static final String REASSIGNED_COPY =
+      """
+      package mini;
+      import java.sql.SQLException;
+      import java.sql.Statement;
+      public class ReassignedCopy {
+        public void go(Statement st, java.io.BufferedReader reader) throws Exception {
+          int n = Integer.parseInt(reader.readLine());
+          int copy = n;
+          copy = 7;
+          if (copy > 5 && copy < 3) {
+            st.executeQuery("SELECT * FROM t WHERE c = '" + n + "'");
+          }
+        }
+      }
+      """;
+
+  @TempDir Path tmp;
+
+  @Test
+  void aGuardOnACopyConstrainsTheOriginal() throws Exception {
+    String dir = "a" + uid();
+    List<Finding> findings = scan(List.of(translate(dir + "/GuardOnCopy.java", GUARD_ON_COPY)));
+
+    assertThat(inFile(findings, "GuardOnCopy.java"))
+        .as(
+            "the copy and the original hold one value, so the guard that says the value cannot be"
+                + " in range also says the original cannot reach the sink")
+        .isEmpty();
+  }
+
+  @Test
+  void aGuardOnTheValueConstrainsTheConcatenationOfIt() throws Exception {
+    String dir = "b" + uid();
+    List<Finding> findings = scan(List.of(translate(dir + "/GuardOnConcat.java", GUARD_ON_CONCAT)));
+
+    assertThat(inFile(findings, "GuardOnConcat.java"))
+        .as("the sink's argument is a temporary built from the guarded value")
+        .isEmpty();
+  }
+
+  @Test
+  void aGuardOnAnUnrelatedVariableDoesNotSilenceThisValue() throws Exception {
+    String dir = "c" + uid();
+    List<Finding> findings =
+        scan(List.of(translate(dir + "/GuardOnUnrelated.java", GUARD_ON_UNRELATED)));
+
+    assertThat(inFile(findings, "GuardOnUnrelated.java"))
+        .as("the guard is about another value entirely, so this one still reaches the sink")
+        .hasSize(1);
+  }
+
+  @Test
+  void aGuardThatDoesNotMakeThePathUnreachableDoesNotSilenceIt() throws Exception {
+    String dir = "d" + uid();
+    List<Finding> findings =
+        scan(List.of(translate(dir + "/ReachableGuard.java", REACHABLE_GUARD)));
+
+    assertThat(inFile(findings, "ReachableGuard.java"))
+        .as("the bounds can both hold, so the path the guard describes really exists")
+        .hasSize(1);
+  }
+
+  @Test
+  void anAssignmentEndsTheRelationBetweenTheNames() throws Exception {
+    String dir = "e" + uid();
+    List<Finding> findings =
+        scan(List.of(translate(dir + "/ReassignedCopy.java", REASSIGNED_COPY)));
+
+    assertThat(inFile(findings, "ReassignedCopy.java"))
+        .as(
+            "the copy holds 7 now, so a guard on it says nothing about the original's value --"
+                + " and the guard is about the copy, which is not the value that reaches the sink")
+        .hasSize(1);
+  }
+
+  /** The findings a scan reported for one file of the program. */
+  private static List<Finding> inFile(List<Finding> findings, String fileName) {
+    List<Finding> out = new ArrayList<>();
+    for (Finding f : findings) {
+      if ((f.filePath() == null ? "" : f.filePath()).contains(fileName)) out.add(f);
+    }
+    return out;
+  }
+
+  private List<Finding> scan(List<TacProgram> programs) {
+    EngineConfig base = ConfigLoader.loadFromClasspath();
+    EngineConfig cfg =
+        new EngineConfig(
+            base.sinkFamilies(),
+            org.plumb.dfa.fact.BuiltinFactKinds.registryWithBuiltins(),
+            base.checkers(),
+            base.cweMappings(),
+            new org.plumb.dfa.config.TuningConfig(
+                2,
+                1000,
+                1000,
+                100,
+                4,
+                false,
+                false,
+                false,
+                "full",
+                "cwe_family",
+                "sarif",
+                false,
+                0),
+            base.receiverPassthroughPatterns());
+    FindingReporter reporter =
+        new DfaEngine(cfg, List.of(new SqlInjectionChecker()), "global", null)
+            .runWithGlobalStore(programs, 0);
+    List<Finding> out = new ArrayList<>();
+    for (Finding f : reporter.all()) {
+      if ("dfa-taint-sql-injection".equals(f.ruleId())) out.add(f);
+    }
+    return out;
+  }
+
+  private TacProgram translate(String relPath, String source) throws Exception {
+    Path file = tmp.resolve(relPath);
+    Files.createDirectories(file.getParent());
+    Files.writeString(file, source);
+    ParsedSource ps = new JavaSourceParser().parse(file);
+    return new TacTranslator(ps).translate();
+  }
+
+  /** Per-call suffix so each test gets its own package, keeping @TempDir dirs independent. */
+  private static String uid() {
+    return java.util.UUID.randomUUID().toString().substring(0, 8);
+  }
+}
