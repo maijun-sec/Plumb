@@ -203,11 +203,22 @@ public final class SidecarProcess implements AutoCloseable {
   /**
    * Send a request and read the response.
    *
+   * <p><b>Why the exchange is ONE INDIVISIBLE STEP.</b> The framing carries no request id: a
+   * response is simply the next frame on the pipe, not the answer to a named request. So one pipe
+   * carries one conversation at a time. Two threads that write at the same moment interleave their
+   * frames -- the sidecar reads a length that belongs to neither request and then waits for bytes
+   * that will never arrive, and neither side ever finishes. The write and the read that answers it
+   * are therefore one atomic step, and a second caller waits for it.
+   *
+   * <p>Serialising the exchange does NOT make the caller's own state safe: a caller that keeps a
+   * view of the sidecar's session (which project is open, what has already been translated) must
+   * hold that view still across the exchange. The frontends that do that hold their own lock.
+   *
    * @param request the request, already serialised to JSON
    * @return the response, as JSON
    * @throws IOException when the sidecar died or the frame was malformed
    */
-  public String exchange(String request) throws IOException {
+  public synchronized String exchange(String request) throws IOException {
     byte[] payload = request.getBytes(StandardCharsets.UTF_8);
     try {
       toSidecar.writeInt(payload.length);

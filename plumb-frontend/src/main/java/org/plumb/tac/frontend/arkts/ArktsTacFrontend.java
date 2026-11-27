@@ -24,11 +24,11 @@ package org.plumb.tac.frontend.arkts;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.plumb.tac.frontend.CompileContext;
 import org.plumb.tac.frontend.TacFrontend;
 import org.plumb.tac.frontend.json.Json;
@@ -86,8 +86,27 @@ import org.plumb.tac.ir.TacProgram;
  */
 public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
 
-  /** The problems of the CURRENT parse, in the IR's structured form. */
-  private final List<TacProgram.FunctionProblem> structuredProblems = new ArrayList<>();
+  /**
+   * The problems of the CURRENT parse, in the IR's structured form.
+   *
+   * <p><b>Why this is THREAD-CONFINED.</b> One frontend serves every worker thread of a scan, so a
+   * list held on the frontend would be shared: one thread's {@code clear()} would wipe the problems
+   * another thread had already reported, and a problem would end up attributed to the wrong file.
+   * The list belongs to the parse, and the parse belongs to the thread that is doing it.
+   */
+  private final ThreadLocal<List<TacProgram.FunctionProblem>> structuredProblems =
+      ThreadLocal.withInitial(ArrayList::new);
+
+  /**
+   * The lock that keeps one sidecar conversation to one thread at a time.
+   *
+   * <p>The sidecar holds ONE session -- the project it has open -- and the framing carries no
+   * request id, so a request that interleaves with another one is answered against the other one's
+   * state. Worse, the interleaved frames make the sidecar wait for bytes that never arrive, and the
+   * scan hangs with no error anywhere. So the whole conversation -- open the project, then
+   * translate the file -- is one indivisible step, and a second thread waits for it.
+   */
+  private final Object sidecarLock = new Object();
 
   /** The language this frontend reads. */
   private final SourceLanguage language;
@@ -101,7 +120,7 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
   private final List<String> command;
 
   /** The projects this frontend has opened, keyed by their root. */
-  private final Map<Path, ArktsProjectDiscovery.Project> projects = new HashMap<>();
+  private final Map<Path, ArktsProjectDiscovery.Project> projects = new ConcurrentHashMap<>();
 
   private ArktsSidecarClient sidecar;
   private boolean projectOpen;
@@ -170,7 +189,7 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
     if (source == null) {
       return ParseResult.empty();
     }
-    structuredProblems.clear();
+    structuredProblems.get().clear();
     List<String> problems = new ArrayList<>();
     if (path == null) {
       // The path is what the sidecar is asked for. Without one there is
@@ -178,8 +197,9 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
       // looks like a crash.
       String message = "the file has no path, so the sidecar cannot be asked for it";
       problems.add(message);
-      structuredProblems.add(
-          new TacProgram.FunctionProblem("<file>", "PARSE_PROBLEM", message, null, -1, -1));
+      structuredProblems
+          .get()
+          .add(new TacProgram.FunctionProblem("<file>", "PARSE_PROBLEM", message, null, -1, -1));
       return new ParseResult(List.of(), problems, defaultPrecision());
     }
     try {
@@ -190,9 +210,11 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
             "this file is a declaration file: it declares the shape of other modules and holds no "
                 + "executable body, so it was not analysed";
         problems.add(message);
-        structuredProblems.add(
-            new TacProgram.FunctionProblem(
-                path.toString(), "PARSE_PROBLEM", message, "DECLARATION_FILE", -1, -1));
+        structuredProblems
+            .get()
+            .add(
+                new TacProgram.FunctionProblem(
+                    path.toString(), "PARSE_PROBLEM", message, "DECLARATION_FILE", -1, -1));
         return new ParseResult(List.of(), problems, defaultPrecision());
       }
 
@@ -200,9 +222,11 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
       if (project.files().isEmpty()) {
         String message = "the project holds no ArkTS source file";
         problems.add(message);
-        structuredProblems.add(
-            new TacProgram.FunctionProblem(
-                path.toString(), "PARSE_PROBLEM", message, "NO_SOURCES", -1, -1));
+        structuredProblems
+            .get()
+            .add(
+                new TacProgram.FunctionProblem(
+                    path.toString(), "PARSE_PROBLEM", message, "NO_SOURCES", -1, -1));
         return new ParseResult(List.of(), problems, defaultPrecision());
       }
       if (project.truncated()) {
@@ -213,41 +237,53 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
                 + ArktsProjectDiscovery.MAX_FILES
                 + " were given to the compiler, so the types of the others may be unknown";
         problems.add(message);
-        structuredProblems.add(
-            new TacProgram.FunctionProblem(
-                path.toString(), "PARSE_PROBLEM", message, "TRUNCATED_PROJECT", -1, -1));
+        structuredProblems
+            .get()
+            .add(
+                new TacProgram.FunctionProblem(
+                    path.toString(), "PARSE_PROBLEM", message, "TRUNCATED_PROJECT", -1, -1));
       }
 
       reportContentDifference(path, source, problems);
 
-      if (!ensureSidecar(problems)) {
-        return new ParseResult(List.of(), problems, defaultPrecision());
+      // ONE conversation at a time. The sidecar holds one session -- the project it has
+      // open -- and the framing carries no request id, so opening the project and
+      // translating the file belong together: a thread that came in between would be
+      // translated against the other thread's project.
+      Json.JsonObject response;
+      synchronized (sidecarLock) {
+        if (!ensureSidecar(problems)) {
+          return new ParseResult(List.of(), problems, defaultPrecision());
+        }
+        ensureProject(project, path, problems);
+        if (!projectOpen) {
+          return new ParseResult(List.of(), problems, defaultPrecision());
+        }
+        response =
+            request(
+                "translate",
+                request -> request.put("path", pathKey(path)).put("language", language.name()));
       }
-      ensureProject(project, path, problems);
-      if (!projectOpen) {
-        return new ParseResult(List.of(), problems, defaultPrecision());
-      }
-
-      Json.JsonObject response =
-          request(
-              "translate",
-              request -> request.put("path", pathKey(path)).put("language", language.name()));
       String incompatible = SidecarProtocol.incompatibility(response);
       if (incompatible != null) {
         String message = "the ArkTS sidecar is not compatible with this build: " + incompatible;
         problems.add(message);
-        structuredProblems.add(
-            new TacProgram.FunctionProblem(
-                path.toString(), "PARSE_PROBLEM", message, "PROTOCOL_MISMATCH", -1, -1));
+        structuredProblems
+            .get()
+            .add(
+                new TacProgram.FunctionProblem(
+                    path.toString(), "PARSE_PROBLEM", message, "PROTOCOL_MISMATCH", -1, -1));
         return new ParseResult(List.of(), problems, defaultPrecision());
       }
       if (!response.getBoolean("ok", false)) {
         String error = response.getString("error");
         String message = "the ArkTS sidecar could not translate the file: " + error;
         problems.add(message);
-        structuredProblems.add(
-            new TacProgram.FunctionProblem(
-                path.toString(), "PARSE_PROBLEM", message, null, -1, -1));
+        structuredProblems
+            .get()
+            .add(
+                new TacProgram.FunctionProblem(
+                    path.toString(), "PARSE_PROBLEM", message, null, -1, -1));
         return new ParseResult(List.of(), problems, defaultPrecision());
       }
 
@@ -263,7 +299,8 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
           Json.JsonObject function = array.getObject(i);
           if (function != null) {
             functions.add(
-                SidecarTacMapper.toFunction(function, path, ctx, language, structuredProblems));
+                SidecarTacMapper.toFunction(
+                    function, path, ctx, language, structuredProblems.get()));
           }
         }
       }
@@ -287,9 +324,16 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
               + ex.getClass().getSimpleName()
               + (ex.getMessage() == null ? "" : ": " + ex.getMessage());
       problems.add(message);
-      structuredProblems.add(
-          new TacProgram.FunctionProblem(
-              path.toString(), "PARSE_PROBLEM", message, ex.getClass().getSimpleName(), -1, -1));
+      structuredProblems
+          .get()
+          .add(
+              new TacProgram.FunctionProblem(
+                  path.toString(),
+                  "PARSE_PROBLEM",
+                  message,
+                  ex.getClass().getSimpleName(),
+                  -1,
+                  -1));
       return new ParseResult(List.of(), problems, defaultPrecision());
     }
   }
@@ -299,7 +343,7 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
     ParseResult plain = parse(source, path, ctx);
     return new StructuredParseResult(
         plain.functions(),
-        List.copyOf(structuredProblems),
+        List.copyOf(structuredProblems.get()),
         plain.precision(),
         plain.programDrops());
   }
@@ -326,14 +370,16 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
         message = "the file could not be analysed completely";
       }
       problems.add(message);
-      structuredProblems.add(
-          new TacProgram.FunctionProblem(
-              path.toString(),
-              problem.getString("kind") == null ? "PARSE_PROBLEM" : problem.getString("kind"),
-              message,
-              problem.getString("nodeClass"),
-              problem.getInt("line", -1),
-              problem.getInt("column", -1)));
+      structuredProblems
+          .get()
+          .add(
+              new TacProgram.FunctionProblem(
+                  path.toString(),
+                  problem.getString("kind") == null ? "PARSE_PROBLEM" : problem.getString("kind"),
+                  message,
+                  problem.getString("nodeClass"),
+                  problem.getInt("line", -1),
+                  problem.getInt("column", -1)));
     }
   }
 
@@ -360,9 +406,11 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
         "the file's content on disk differs from the content that was given to the frontend; the "
             + "analysis used the content on disk, because the compiler reads the file itself";
     problems.add(message);
-    structuredProblems.add(
-        new TacProgram.FunctionProblem(
-            path.toString(), "PARSE_PROBLEM", message, "CONTENT_MISMATCH", -1, -1));
+    structuredProblems
+        .get()
+        .add(
+            new TacProgram.FunctionProblem(
+                path.toString(), "PARSE_PROBLEM", message, "CONTENT_MISMATCH", -1, -1));
   }
 
   /**
@@ -402,9 +450,11 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
                 + " directory, and the PLUMB_ARKTS_SIDECAR environment variable does not name one"
                 + " either";
         problems.add(message);
-        structuredProblems.add(
-            new TacProgram.FunctionProblem(
-                "<project>", "PARSE_PROBLEM", message, "MISSING_SIDECAR", -1, -1));
+        structuredProblems
+            .get()
+            .add(
+                new TacProgram.FunctionProblem(
+                    "<project>", "PARSE_PROBLEM", message, "MISSING_SIDECAR", -1, -1));
         return false;
       }
       Path node = ArktsSidecarClient.locateNode();
@@ -413,9 +463,11 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
             "no Node runtime was found: the ArkTS sidecar runs on Node, and the PLUMB_NODE "
                 + "environment variable does not name one either";
         problems.add(message);
-        structuredProblems.add(
-            new TacProgram.FunctionProblem(
-                "<project>", "PARSE_PROBLEM", message, "MISSING_RUNTIME", -1, -1));
+        structuredProblems
+            .get()
+            .add(
+                new TacProgram.FunctionProblem(
+                    "<project>", "PARSE_PROBLEM", message, "MISSING_RUNTIME", -1, -1));
         return false;
       }
       effective = ArktsSidecarClient.command(node, script);
@@ -426,9 +478,11 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
     } catch (IOException ex) {
       String message = "the ArkTS sidecar could not be started: " + ex.getMessage();
       problems.add(message);
-      structuredProblems.add(
-          new TacProgram.FunctionProblem(
-              "<project>", "PARSE_PROBLEM", message, "MISSING_SIDECAR", -1, -1));
+      structuredProblems
+          .get()
+          .add(
+              new TacProgram.FunctionProblem(
+                  "<project>", "PARSE_PROBLEM", message, "MISSING_SIDECAR", -1, -1));
       return false;
     }
   }
@@ -481,17 +535,20 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
     if (incompatible != null) {
       String message = "the ArkTS sidecar is not compatible with this build: " + incompatible;
       problems.add(message);
-      structuredProblems.add(
-          new TacProgram.FunctionProblem(
-              "<project>", "PARSE_PROBLEM", message, "PROTOCOL_MISMATCH", -1, -1));
+      structuredProblems
+          .get()
+          .add(
+              new TacProgram.FunctionProblem(
+                  "<project>", "PARSE_PROBLEM", message, "PROTOCOL_MISMATCH", -1, -1));
       return;
     }
     if (!response.getBoolean("ok", false)) {
       String error = response.getString("error");
       String message = "the ArkTS sidecar could not open the project: " + error;
       problems.add(message);
-      structuredProblems.add(
-          new TacProgram.FunctionProblem("<project>", "PARSE_PROBLEM", message, null, -1, -1));
+      structuredProblems
+          .get()
+          .add(new TacProgram.FunctionProblem("<project>", "PARSE_PROBLEM", message, null, -1, -1));
       return;
     }
 
@@ -535,13 +592,15 @@ public final class ArktsTacFrontend implements TacFrontend, AutoCloseable {
 
   @Override
   public void close() {
-    if (sidecar != null) {
-      sidecar.close();
-      sidecar = null;
+    synchronized (sidecarLock) {
+      if (sidecar != null) {
+        sidecar.close();
+        sidecar = null;
+      }
+      projectOpen = false;
+      openProjectId = null;
+      openProjectFiles.clear();
+      projects.clear();
     }
-    projectOpen = false;
-    openProjectId = null;
-    openProjectFiles.clear();
-    projects.clear();
   }
 }
