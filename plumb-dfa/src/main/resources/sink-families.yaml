@@ -3611,6 +3611,14 @@ families:
         - pattern: '^System\.DirectoryServices\.DirectoryEntries\.(Add|Remove|Find)(/\d+)?'
           arg_index: 0
 
+
+      python3:
+        # ldap3's connection comes from a helper, so the owner is the
+        # placeholder for an object the front end could not resolve -- the
+        # same shape the python3 SQL entry uses for a cursor. The FILTER is
+        # the second argument, which is this family's own default.
+        - pattern: '^<unknown>\.search\b(/\d+)?'
+
   log-injection.sinks:
     cwe: CWE-117
     severity: MEDIUM
@@ -7511,6 +7519,30 @@ families:
         - '^\\filter_input\b(/\d+)?'
         - '^\\filter_input_array\b(/\d+)?'
 
+      python3:
+        # Flask's request object. The value a program uses comes out of a
+        # GETTER, so the getter is the call that carries the untrusted value.
+        # The callee signature names the module the request was imported
+        # from, so the pattern can say so too.
+        #
+        # Measured against the side car (the TAC's own words): `request.args.get("x")`
+        # lowers to the callee `flask.request.args.get/1`, `request.cookies.get("x")`
+        # to `flask.request.cookies.get/1`, and so on. A pattern that does not
+        # match those names verbatim never fires, so they are written out.
+        #
+        # The entry form above (request.args and friends) covers the SUBSCRIPT
+        # read; this covers the getter. Without both, one of the two shapes
+        # reaches no sink at all.
+        - '^flask\.request\.args\.get\b(/\d+)?'
+        - '^flask\.request\.args\.getlist\b(/\d+)?'
+        - '^flask\.request\.form\.get\b(/\d+)?'
+        - '^flask\.request\.form\.getlist\b(/\d+)?'
+        - '^flask\.request\.values\.get\b(/\d+)?'
+        - '^flask\.request\.cookies\.get\b(/\d+)?'
+        - '^flask\.request\.headers\.get\b(/\d+)?'
+        - '^flask\.request\.headers\.getlist\b(/\d+)?'
+        - '^flask\.request\.get_json\b(/\d+)?'
+
   template-injection.sinks:
     cwe: CWE-95
     severity: CRITICAL
@@ -7872,6 +7904,15 @@ families:
         - pattern: '^System\.Xml\.XPath\.Extensions\.XPathExtensions\.(XPathEvaluate|XPathSelectElement)(/\d+)?'
           arg_index: 1
         - pattern: '^Saxon\.Api\.XPathCompiler\.(Compile|Evaluate|EvaluateSingle)(/\d+)?'
+          arg_index: 0
+
+
+      python3:
+        # lxml builds the query object FROM the expression, so a tainted
+        # expression is an XPath injection. The expression is the
+        # constructor's first argument, and the owner is the module lxml was
+        # imported from -- the engine's own callee key, measured.
+        - pattern: '^lxml\.etree\.XPath\b(/\d+)?'
           arg_index: 0
 
   xquery.sinks:

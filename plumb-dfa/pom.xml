@@ -966,6 +966,21 @@
                              engine calls it clean, and every sink
                              downstream of it is blind. -->
                         <include>org/plumb/dfa/taint/SourceFamilyMatcherTest.java</include>
+                        <!-- Flask's request GETTERS. The catalogue named only the
+                             container (request.args and friends), so the taint
+                             reached a subscript read but not the getter a Flask
+                             program actually writes: a false negative on every
+                             Flask program, measured at 1.3% recall against the
+                             OWASP Benchmark for Python. The control matters as
+                             much: a pattern loose enough to catch the getter
+                             would catch every dict.get in every Python file. -->
+                        <include>org/plumb/dfa/taint/PythonWebSourceFamilyTest.java</include>
+                        <!-- Python's XPath and LDAP entry points. Neither family
+                             had a python3 entry, so a tainted expression or
+                             filter reached no sink at all: 51 missed XPath
+                             cases and 16 missed LDAP ones, measured against
+                             the OWASP Benchmark for Python. -->
+                        <include>org/plumb/dfa/config/PythonScriptSinkFamilyTest.java</include>
                         <!-- The script languages' own sinks, through the real
                              front ends: the owner of document.write is a
                              CLASS, the owner of socket.recv's value is the
