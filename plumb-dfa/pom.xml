@@ -529,7 +529,7 @@
                              arithmetic rules could only see a string LITERAL next
                              to the operation, so a concatenation whose
                              string-ness was one step away was reported as an
-                             integer overflow -- on a string. The control matters
+                             integer overflow on a string. The control matters
                              as much: adding a tainted value to a NUMBER is
                              still reported, so the test pins the difference
                              between the two operations and not the absence of a
@@ -992,6 +992,12 @@
                              cases and 16 missed LDAP ones, measured against
                              the OWASP Benchmark for Python. -->
                         <include>org/plumb/dfa/config/PythonScriptSinkFamilyTest.java</include>
+                        <!-- JavaScript and TypeScript reach their own sinks. Seven
+                             families had no script entry at all, so a tainted value
+                             that reached a JavaScript sink reached no sink: seven
+                             categories at zero coverage and a recall of 17.7%,
+                             measured against BenchProctor's script suites. -->
+                        <include>org/plumb/dfa/taint/JavaScriptSinkFamilyTest.java</include>
                         <!-- The script languages' own sinks, through the real
                              front ends: the owner of document.write is a
                              CLASS, the owner of socket.recv's value is the

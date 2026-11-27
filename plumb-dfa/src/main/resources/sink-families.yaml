@@ -2190,6 +2190,16 @@ families:
         # The bytes are the first argument.
         - pattern: '^\\unserialize\b(/\d+)?'
           arg_index: 0
+      typescript,javascript,arkts:
+        # The client objects are local variables, so the catalogue cannot know
+        # their owner: the method name alone is what the engine's callee key
+        # carries.  The first argument is the one the untrusted data reaches.
+        # TypeScript resolves an imported class to its module, so the same call
+        # arrives under a qualified key; the pattern names both shapes.
+        - pattern: '^node-serialize\.unserialize\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^js-yaml\.load\b(/\d+)?'
+          arg_index: 0
 
   dos.sinks:
     cwe: CWE-730,CWE-776
@@ -3618,6 +3628,18 @@ families:
         # same shape the python3 SQL entry uses for a cursor. The FILTER is
         # the second argument, which is this family's own default.
         - pattern: '^<unknown>\.search\b(/\d+)?'
+      typescript,javascript,arkts:
+        # The client objects are local variables, so the catalogue cannot know
+        # their owner: the method name alone is what the engine's callee key
+        # carries.  The first argument is the one the untrusted data reaches.
+        # TypeScript resolves an imported class to its module, so the same call
+        # arrives under a qualified key; the pattern names both shapes.
+        - pattern: '^compare\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^search\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^"ldapjs"\.Client\.(compare|search)\b(/\d+)?'
+          arg_index: 0
 
   log-injection.sinks:
     cwe: CWE-117
@@ -3977,6 +3999,20 @@ families:
       # Flask's redirect takes it as its first argument too.
       - pattern: '^flask\.redirect\b(/\d+)?'
         arg_index: 0
+      typescript,javascript,arkts:
+        # The client objects are local variables, so the catalogue cannot know
+        # their owner: the method name alone is what the engine's callee key
+        # carries.  The first argument is the one the untrusted data reaches.
+        # TypeScript resolves an imported class to its module, so the same call
+        # arrives under a qualified key; the pattern names both shapes.
+        - pattern: '^(location|redirect)\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^"express"\.Response\.(location|redirect)\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^set/2\b'
+          arg_index: 1
+        - pattern: '^"express"\.Response\.set/2\b'
+          arg_index: 1
 
   privacy.sinks:
     cwe: CWE-215,CWE-226,CWE-359,CWE-489,CWE-497
@@ -6892,6 +6928,30 @@ families:
           arg_index: 0
         - pattern: '^knex\.raw\b(/\d+)?'
           arg_index: 0
+        # The ORM and the query builders name their owner by a local
+        # variable, so the catalogue cannot know it: the method name
+        # alone is what the engine's callee key carries.  The SQL is the
+        # first argument of each of these.
+        - pattern: '^prepare\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^literal\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^\$queryRawUnsafe\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^\$executeRawUnsafe\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^whereRaw\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^raw\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^findAll\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^where/1\b'
+          arg_index: 0
+        - pattern: '^select/1\b'
+          arg_index: 0
+        - pattern: '^run/1\b'
+          arg_index: 0
       php:
         # The SQL is the SECOND argument of the procedural APIs and the FIRST
         # of the PDO ones.
@@ -7385,6 +7445,15 @@ families:
         - pattern: '^http\.get\b(/\d+)?'
         - pattern: '^https\.get\b(/\d+)?'
         - pattern: '^fetch\.fetch\b(/\d+)?'
+
+  taint.sources.database:
+    cwe: null
+    severity: MEDIUM
+    languages: ['typescript', 'javascript', 'arkts']
+    patterns:
+      # A row read back from the database carries whatever an earlier request
+      # stored in it, so it is untrusted input like any other.
+      - '^query\b(/\d+)?'
 
   taint.sources.web:
     cwe: null
@@ -7913,6 +7982,14 @@ families:
         # constructor's first argument, and the owner is the module lxml was
         # imported from -- the engine's own callee key, measured.
         - pattern: '^lxml\.etree\.XPath\b(/\d+)?'
+          arg_index: 0
+      typescript,javascript,arkts:
+        # The client objects are local variables, so the catalogue cannot know
+        # their owner: the method name alone is what the engine's callee key
+        # carries.  The first argument is the one the untrusted data reaches.
+        # TypeScript resolves an imported class to its module, so the same call
+        # arrives under a qualified key; the pattern names both shapes.
+        - pattern: '^xpath\.(evaluate|parse|select)\b(/\d+)?'
           arg_index: 0
 
   xquery.sinks:
@@ -8655,6 +8732,19 @@ families:
       # document.write puts the argument into the page as markup.
       - pattern: '^Document\.(write|writeln)\b(/\d+)?'
         arg_index: 0
+      # The response object is a local variable, so the catalogue
+      # cannot know its owner: the method name alone is what the
+      # engine's callee key carries.  TypeScript resolves an imported
+      # class to its module, so the same call arrives under a
+      # qualified key; the pattern names both shapes.
+      - pattern: '^(send|end)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^"express"\.Response\.(send|end)\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^nunjucks\.renderString\b(/\d+)?'
+        arg_index: 0
+      - pattern: '^marked\.parse\b(/\d+)?'
+        arg_index: 0
       python3:
       # mark_safe is Django's 'do not escape this'; a tainted value marked
       # safe reaches the page as markup.
@@ -8733,6 +8823,16 @@ families:
         # expands it when the parser resolves entities, so the document it
         # is given is the one that decides what the parser reads.
         - pattern: '^lxml\.etree\.(fromstring|parse|parseid)\b(/\d+)?'
+          arg_index: 0
+      typescript,javascript,arkts:
+        # The client objects are local variables, so the catalogue cannot know
+        # their owner: the method name alone is what the engine's callee key
+        # carries.  The first argument is the one the untrusted data reaches.
+        # TypeScript resolves an imported class to its module, so the same call
+        # arrives under a qualified key; the pattern names both shapes.
+        - pattern: '^libxmljs\.parseXml(Async)?\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^(?:libxmljs2\.)?parseXmlString\b(/\d+)?'
           arg_index: 0
   android-implicit-intent.sinks:
     cwe: CWE-927
