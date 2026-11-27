@@ -32,18 +32,22 @@ frontend that lowers it to TAC; the analysis engine does not change.
 | ArkTS | ✅ supported | ohos-typescript, sidecar |
 | Python 3 | ✅ supported | CPython `ast`, sidecar |
 | PHP | ✅ supported | php-parser, sidecar |
+| C / C++ | ❌ not supported | — |
 
 > **"Supported" is about the frontend and the scan path, not about equal rule
 > coverage.** The five script languages' frontends are wired into the real scan
-> path (they are not placeholders), but they only get the DFA rules: the **601**
-> AST rules in `plumb-style` produce **nothing** for a non-Java language, because
-> they walk a JavaParser `CompilationUnit` and a non-Java file has no such AST.
-> The catalogue is narrower too — Java reaches **66 of the 67** sink families,
-> but JavaScript, TypeScript, ArkTS and Python reach **43** each (PHP **42**,
-> Go **46**, C# **41**). And the repository still has **no** test corpus for any
-> non-Java language, so the question "how many CWEs does TypeScript get right
-> today?" has **no number to answer it with**. Those three gaps are where the
-> next work is; the frontends are done.
+> path (they are not placeholders), and they are covered by the DFA rules. The
+> AST style rules are Java-only by design and are out of scope for the other
+> languages. What the script languages lack is breadth and evidence: Java reaches
+> **66 of the 67** sink families, but JavaScript, TypeScript, ArkTS and Python
+> reach **43** each (PHP **42**, Go **46**, C# **41**), and the repository still
+> has **no** test corpus for any non-Java language, so the question "how many
+> CWEs does TypeScript get right today?" has **no number to answer it with**.
+> Those two gaps are where the next work is; the frontends are done.
+
+> **C/C++ is out of scope.** A C/C++ file has no frontend, so the run reports
+> `FRONTEND_NOT_IMPLEMENTED` for it and the file is not analysed — it says so
+> rather than skipping the file silently.
 
 > **Python 3 means Python 3.** Python 2 is not supported: the two major
 > versions have different grammars, and the frontend parses with the `ast`
