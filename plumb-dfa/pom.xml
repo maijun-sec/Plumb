@@ -517,6 +517,14 @@
                              decrement findings this checker solely owns. -->
                         <include>org/plumb/dfa/checkers/taint/IntUnderflowCwe191GuardTest.java</include>
 
+                        <!-- CWE-190: the multiplication branch of the overflow heuristic. The
+                             checker had ADD and SUB branches and NO MUL branch, so a guard on
+                             the multiplier's operand never silenced a product; and the bound
+                             has to be judged by its VALUE, not by its presence --
+                             `data < Integer.MAX_VALUE` does not stop `data * 2` from
+                             overflowing, `data < (Integer.MAX_VALUE / 2)` does. -->
+                        <include>org/plumb/dfa/checkers/taint/IntOverflowCwe190GuardTest.java</include>
+
                         <!-- The side-effect invalidation log is read by a
                              STRING key ("this:foo"), and the spelling
                              lives only in the class javadoc. A mismatch

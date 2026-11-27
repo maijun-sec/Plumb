@@ -27,11 +27,23 @@ frontend that lowers it to TAC; the analysis engine does not change.
 | Scala | ✅ supported | compiler plugin, in-process |
 | C# | ✅ supported | .NET sidecar |
 | Go | ✅ supported | Go sidecar |
-| JavaScript | 🚧 in progress | TypeScript compiler, sidecar |
-| TypeScript | 🚧 in progress | TypeScript compiler, sidecar |
-| ArkTS | 🚧 in progress | ohos-typescript, sidecar |
-| Python 3 | 🚧 in progress | CPython `ast`, sidecar |
-| PHP | 🚧 in progress | php-parser, sidecar |
+| JavaScript | ✅ supported | TypeScript compiler, sidecar |
+| TypeScript | ✅ supported | TypeScript compiler, sidecar |
+| ArkTS | ✅ supported | ohos-typescript, sidecar |
+| Python 3 | ✅ supported | CPython `ast`, sidecar |
+| PHP | ✅ supported | php-parser, sidecar |
+
+> **"Supported" is about the frontend and the scan path, not about equal rule
+> coverage.** The five script languages' frontends are wired into the real scan
+> path (they are not placeholders), but they only get the DFA rules: the **601**
+> AST rules in `plumb-style` produce **nothing** for a non-Java language, because
+> they walk a JavaParser `CompilationUnit` and a non-Java file has no such AST.
+> The catalogue is narrower too — Java reaches **66 of the 67** sink families,
+> but JavaScript, TypeScript, ArkTS and Python reach **43** each (PHP **42**,
+> Go **46**, C# **41**). And the repository still has **no** test corpus for any
+> non-Java language, so the question "how many CWEs does TypeScript get right
+> today?" has **no number to answer it with**. Those three gaps are where the
+> next work is; the frontends are done.
 
 > **Python 3 means Python 3.** Python 2 is not supported: the two major
 > versions have different grammars, and the frontend parses with the `ast`
@@ -81,7 +93,7 @@ stands for every key.
 
 | Dimension | Number | Source |
 | --- | --- | --- |
-| Languages | **5** supported, **5** in progress | `SourceLanguage`, `FrontendRegistry` |
+| Languages | **10** supported (the script languages' catalogue and corpus are still filling in) | `SourceLanguage`, `FrontendRegistry` |
 | Style checkers | **601** (`CheckerCategories` registers 599) | `plumb-style/**` |
 | DFA checkers | **99** actually registered | `ScanRunner.buildDfaCheckers()` |
 | Taint rules | **12** | `TaintRuleRegistry` |

@@ -270,6 +270,41 @@ public final class GuardTracker {
   private final Map<TacOperand.TacVar, String> knownConstants = new HashMap<>();
 
   /**
+   * Vars that hold a value <b>computed from constants</b>.
+   *
+   * <p>The translator folds {@code Integer.MAX_VALUE} into a literal, so {@code Integer.MAX_VALUE /
+   * 2} reaches the IR as the result of dividing two literals -- a <b>computed</b> constant: it is
+   * neither a literal nor in {@link #knownConstants} (that one holds the symbolic names that come
+   * from a FIELDLOAD).
+   *
+   * <p>The consequence is that the guard <b>cannot recognise it</b>: the right-hand bound of {@code
+   * data < (Integer.MAX_VALUE / 2)} is a temporary variable, so none of {@link
+   * #recordCompareIfApplicable}'s branches match =&gt; there is <b>no guard at all</b> =&gt; the
+   * multiplication is reported as an overflow. That is the most common fix shape in Juliet's CWE190
+   * / CWE191 families.
+   *
+   * <p>Recording the result of "constant op constant" lets a comparison use it as a bound -- the
+   * same thing the Java compiler does. An arithmetic overflow is <b>not</b> folded: better no guard
+   * than a wrong guard.
+   */
+  private final Map<TacOperand.TacVar, Folded> knownFoldedConstants = new HashMap<>();
+
+  /**
+   * A folded constant, carrying its <b>width</b>.
+   *
+   * <p>The width is not a detail: {@code Integer.MAX_VALUE * 2} overflows in int arithmetic, so its
+   * value is not the number long arithmetic would compute. Folding int arithmetic at long width
+   * yields a plausible-looking bound that is actually wrong -- and a wrong bound silences a real
+   * finding.
+   */
+  private record Folded(long value, boolean isLong) {
+    /** The value as the text a guard's bound is written in. */
+    String text() {
+      return String.valueOf(value);
+    }
+  }
+
+  /**
    * Vars that hold an array's {@code length}, mapped to the array they were read from.
    *
    * <p>Populated by {@link #recordConstantLoadIfApplicable} when a {@code FIELDLOAD} reads the
@@ -414,6 +449,104 @@ public final class GuardTracker {
   }
 
   /**
+   * Fold an arithmetic operation over two CONSTANTS into a constant.
+   *
+   * <p>Only what the Java language itself folds at compile time is folded here, and only when the
+   * result is exact: an arithmetic overflow means the expression does NOT have the value we would
+   * compute, so nothing is recorded. A missing constant loses a guard (and with it, a suppression);
+   * a wrong one would lose a finding, so the asymmetry is deliberate.
+   *
+   * <p>The folded value is kept as its TEXT, so that the guard that uses it reads as the number it
+   * is: the arithmetic contradiction check and the solver both need a number, and a symbolic name
+   * like {@code "Integer.MAX_VALUE"} is neither.
+   */
+  private void recordConstantFoldIfApplicable(TacInstruction ins) {
+    if (ins.dest == null || !(ins.dest instanceof TacOperand.TacVar dest)) return;
+    if (ins.binop == null) return;
+    Folded left = foldedValueOf(ins.lhs1);
+    Folded right = foldedValueOf(ins.lhs2);
+    if (left == null || right == null) return;
+    Folded folded = foldConstants(ins.binop, left, right);
+    if (folded == null) return;
+    knownFoldedConstants.put(dest, folded);
+  }
+
+  /**
+   * The value of an operand, when it is a constant.
+   *
+   * <p>A literal counts, with the width its own Java type gives it. So does a var that holds a
+   * previously folded constant, which is what makes a chain like {@code Integer.MAX_VALUE / 2 / 3}
+   * fold all the way down.
+   */
+  private Folded foldedValueOf(TacOperand operand) {
+    if (operand instanceof TacOperand.Const c) {
+      Object v = c.value();
+      if (v instanceof Long l) return new Folded(l, true);
+      if (v instanceof Integer i) return new Folded(i, false);
+      if (v instanceof Short s) return new Folded(s, false);
+      if (v instanceof Byte b) return new Folded(b, false);
+      if (v instanceof Character ch) return new Folded(ch, false);
+      return null;
+    }
+    if (operand instanceof TacOperand.TacVar v) {
+      return knownFoldedConstants.get(v);
+    }
+    return null;
+  }
+
+  /**
+   * The result of an arithmetic operation over two constants, or {@code null} when the operation is
+   * not arithmetic or the result is not exact.
+   *
+   * <p>The width of the operands decides the width of the arithmetic: Java's {@code int} does not
+   * silently widen, so {@code Integer.MAX_VALUE * 2} overflows and has NO value we could record.
+   * Folding it in long arithmetic would produce a plausible-looking number that is not the
+   * expression's value.
+   */
+  private static Folded foldConstants(BinaryOperator op, Folded left, Folded right) {
+    if (op == null) return null;
+    boolean isLong = left.isLong() || right.isLong();
+    try {
+      if (isLong) {
+        long a = left.value();
+        long b = right.value();
+        switch (op) {
+          case ADD:
+            return new Folded(Math.addExact(a, b), true);
+          case SUB:
+            return new Folded(Math.subtractExact(a, b), true);
+          case MUL:
+            return new Folded(Math.multiplyExact(a, b), true);
+          case DIV:
+            // Java's integer division truncates toward zero. Dividing by zero is not a
+            // constant expression at all.
+            if (b == 0) return null;
+            return new Folded(a / b, true);
+          default:
+            return null;
+        }
+      }
+      int a = (int) left.value();
+      int b = (int) right.value();
+      switch (op) {
+        case ADD:
+          return new Folded(Math.addExact(a, b), false);
+        case SUB:
+          return new Folded(Math.subtractExact(a, b), false);
+        case MUL:
+          return new Folded(Math.multiplyExact(a, b), false);
+        case DIV:
+          if (b == 0) return null;
+          return new Folded(a / b, false);
+        default:
+          return null;
+      }
+    } catch (ArithmeticException overflow) {
+      return null;
+    }
+  }
+
+  /**
    * Record the length of an array allocated with a LITERAL size.
    *
    * <p>{@code new String[3]} has length 3. The size arrives in {@code lhs1} per the TAC's NEWARRAY
@@ -439,6 +572,7 @@ public final class GuardTracker {
     guardedVars.clear();
     allGuardsSeen.clear();
     knownConstants.clear();
+    knownFoldedConstants.clear();
     arrayLengthVars.clear();
     knownArrayLengths.clear();
     derivedGuards.clear();
@@ -463,6 +597,9 @@ public final class GuardTracker {
       case FIELDLOAD -> recordConstantLoadIfApplicable(ins);
       case NEWARRAY -> recordArrayLengthIfApplicable(ins);
       case BINOP -> {
+        // The constant fold comes FIRST: a later comparison may use the folded value as its
+        // bound.
+        recordConstantFoldIfApplicable(ins);
         recordCompareIfApplicable(ins);
         recordLogicalOpIfApplicable(ins);
         // Only call the arith
@@ -484,6 +621,11 @@ public final class GuardTracker {
             && ins.lhs1 instanceof TacOperand.TacVar moveSrc) {
           Long len = knownArrayLengths.get(moveSrc);
           if (len != null) knownArrayLengths.put(moveDest, len);
+          // A folded constant follows the binding, the same way an array's known length does:
+          // `int limit = Integer.MAX_VALUE / 2;` and then `data < limit` are about the same
+          // bound.
+          Folded folded = knownFoldedConstants.get(moveSrc);
+          if (folded != null) knownFoldedConstants.put(moveDest, folded);
         }
         // rebinding a variable retires every guard proved for its previous value.
         //
@@ -652,6 +794,21 @@ public final class GuardTracker {
       // intended lower bound.
       var = v;
       literalDesc = c.toString();
+      flipped = true;
+    } else if (ins.lhs1 instanceof TacOperand.TacVar v
+        && ins.lhs2 instanceof TacOperand.TacVar v2
+        && knownFoldedConstants.containsKey(v2)) {
+      // Compare against a value COMPUTED from constants (e.g. `data < t` where t holds
+      // `Integer.MAX_VALUE / 2`). The bound is a NUMBER, so the arithmetic checks and the solver
+      // can both read it.
+      var = v;
+      literalDesc = knownFoldedConstants.get(v2).text();
+    } else if (ins.lhs2 instanceof TacOperand.TacVar v
+        && ins.lhs1 instanceof TacOperand.TacVar v2
+        && knownFoldedConstants.containsKey(v2)) {
+      // Same flip, with the computed constant on the LHS.
+      var = v;
+      literalDesc = knownFoldedConstants.get(v2).text();
       flipped = true;
     } else if (ins.lhs1 instanceof TacOperand.TacVar v
         && ins.lhs2 instanceof TacOperand.TacVar v2
@@ -1410,6 +1567,72 @@ public final class GuardTracker {
         return true;
     }
     return false;
+  }
+
+  /**
+   * The largest value {@code var} can have on this path, or {@code null} when nothing says.
+   *
+   * <p>A bound is only useful for a question like "can this multiplication overflow?" if the
+   * checker can see <b>how big</b> the bound is. {@link #isGuardedBy} answers only "is there a
+   * bound of this kind", and that is not enough: {@code data < Integer.MAX_VALUE} does <b>not</b>
+   * stop {@code data * 2} from overflowing, while {@code data < (Integer.MAX_VALUE / 2)} does. One
+   * of them is a real fix and the other is not, and only the bound's VALUE tells them apart.
+   *
+   * <p>The strictness is resolved here: {@code var < K} means {@code var <= K - 1} and {@code var
+   * <= K} means {@code var <= K}. When several upper bounds are in force, the TIGHTEST one wins.
+   *
+   * @param var the variable
+   * @return the largest value it can take, or {@code null} when no numeric upper bound holds
+   */
+  public Long upperBoundOf(TacOperand.TacVar var) {
+    if (var == null) return null;
+    Long best = null;
+    for (Guard g : activeGuards) {
+      if (!g.isNumeric()) continue;
+      if (!g.boundedVar().equals(var)) continue;
+      Long bound = parseBoundLiteral(g);
+      if (bound == null) continue;
+      long effective;
+      if (g.op() == BinaryOperator.LT) {
+        effective = bound - 1;
+      } else if (g.op() == BinaryOperator.LE) {
+        effective = bound;
+      } else {
+        continue;
+      }
+      if (best == null || effective < best) best = effective;
+    }
+    return best;
+  }
+
+  /**
+   * The smallest value {@code var} can have on this path, or {@code null} when nothing says.
+   *
+   * <p>The mirror of {@link #upperBoundOf}: {@code var > K} means {@code var >= K + 1} and {@code
+   * var >= K} means {@code var >= K}. When several lower bounds are in force, the LARGEST one wins.
+   *
+   * @param var the variable
+   * @return the smallest value it can take, or {@code null} when no numeric lower bound holds
+   */
+  public Long lowerBoundOf(TacOperand.TacVar var) {
+    if (var == null) return null;
+    Long best = null;
+    for (Guard g : activeGuards) {
+      if (!g.isNumeric()) continue;
+      if (!g.boundedVar().equals(var)) continue;
+      Long bound = parseBoundLiteral(g);
+      if (bound == null) continue;
+      long effective;
+      if (g.op() == BinaryOperator.GT) {
+        effective = bound + 1;
+      } else if (g.op() == BinaryOperator.GE) {
+        effective = bound;
+      } else {
+        continue;
+      }
+      if (best == null || effective > best) best = effective;
+    }
+    return best;
   }
 
   /**

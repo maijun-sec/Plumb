@@ -26,11 +26,19 @@
 | Scala | ✅ 已支持 | 编译器插件，进程内 |
 | C# | ✅ 已支持 | .NET sidecar |
 | Go | ✅ 已支持 | Go sidecar |
-| JavaScript | 🚧 进行中 | TypeScript 编译器，sidecar |
-| TypeScript | 🚧 进行中 | TypeScript 编译器，sidecar |
-| ArkTS | 🚧 进行中 | ohos-typescript，sidecar |
-| Python 3 | 🚧 进行中 | CPython `ast`，sidecar |
-| PHP | 🚧 进行中 | php-parser，sidecar |
+| JavaScript | ✅ 已支持 | TypeScript 编译器，sidecar |
+| TypeScript | ✅ 已支持 | TypeScript 编译器，sidecar |
+| ArkTS | ✅ 已支持 | ohos-typescript，sidecar |
+| Python 3 | ✅ 已支持 | CPython `ast`，sidecar |
+| PHP | ✅ 已支持 | php-parser，sidecar |
+
+> **「已支持」说的是前端与扫描链路，不等于规则覆盖相等。** 五门脚本语言的前端已经
+> 接进真实的扫描路径（不是占位），但它们只能吃到 DFA 规则：`plumb-style` 的 **601** 条
+> AST 规则对非 Java 语言**一条都不产出**——它们跑在 JavaParser 的 `CompilationUnit` 上，
+> 而非 Java 的文件没有那种 AST。目录广度上，Java 可达 **67 个 sink family 中的 66 个**，
+> 而 JavaScript / TypeScript / ArkTS / Python 各只有 **43** 个（PHP **42**、Go **46**、
+> C# **41**）。仓库里也**还没有**任何非 Java 的测试语料，所以「TypeScript 现在判对多少条
+> CWE」这个问题目前**没有数字可答**——这三条缺口是下一步该补的地方，而不是「前端还没写」。
 
 > **Python 3 就是 Python 3**，不支持 Python 2：两个大版本的文法不同，而前端用
 > 运行中解释器的 `ast` 模块解析，所以 Python 2 文件会**解析报错**，而不是被
@@ -71,7 +79,7 @@ sink 目录和报告器，永远不需要知道自己看的是哪种语言。
 
 | 维度 | 数据 | 来源 |
 | --- | --- | --- |
-| 语言 | **5** 种已支持，**5** 种进行中 | `SourceLanguage`、`FrontendRegistry` |
+| 语言 | **10** 种已支持（脚本语言的规则目录与语料仍在补） | `SourceLanguage`、`FrontendRegistry` |
 | Style checker | **601** 个（`CheckerCategories` 登记 599） | `plumb-style/**` |
 | DFA checker | **99** 个实际注册 | `ScanRunner.buildDfaCheckers()` |
 | Taint rule | **12** 条 | `TaintRuleRegistry` |

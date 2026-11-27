@@ -311,4 +311,102 @@ class GuardTrackerTest {
     assertThat(t.isGuardedBy(v("data"), BinaryOperator.GE)).isFalse();
     assertThat(t.isGuardedBy(v("data"), BinaryOperator.LT)).isFalse();
   }
+
+  /**
+   * The result of "constant op constant" can serve as a guard's bound.
+   *
+   * <p>The translator folds {@code Integer.MAX_VALUE} into a literal, so {@code Integer.MAX_VALUE /
+   * 2} reaches the IR as two literals divided. The right-hand bound of the comparison is then a
+   * temporary variable -- neither a literal nor a FIELDLOAD-loaded symbolic constant =&gt; the
+   * guard <b>cannot recognise it</b> =&gt; the comparison carries no bound at all.
+   *
+   * <p>That is the most common fix shape in Juliet's CWE190 / CWE191 families ({@code if (data <
+   * (Integer.MAX_VALUE/2))}); the guard cannot recognise it =&gt; the multiplication that follows
+   * is reported as an overflow.
+   */
+  @Test
+  void aConstantFoldedBoundIsRecognised() {
+    GuardTracker t = new GuardTracker();
+    // t0 = Integer.MAX_VALUE / 2  (two literals, folded)
+    t.track(
+        binop(
+            "t0",
+            TacOperand.Const.ofInt(Integer.MAX_VALUE),
+            TacOperand.Const.ofInt(2),
+            BinaryOperator.DIV));
+    // t1 = data < t0
+    t.track(binop("t1", v("data"), v("t0"), BinaryOperator.LT));
+    t.track(branch(v("t1")));
+    assertThat(t.isGuardedBy(v("data"), BinaryOperator.LT)).isTrue();
+  }
+
+  /**
+   * A folded bound is a <b>number</b>, not a symbolic name -- the arithmetic contradiction check
+   * and the solver both need a number.
+   *
+   * <p>A symbolic name ({@code "Integer.MAX_VALUE"}) does not survive {@code
+   * GuardPredicateTranslator}'s literal normalisation: it reads the name as an unconstrained free
+   * variable, so the question it asks is a different one.
+   */
+  @Test
+  void aConstantFoldedBoundCarriesItsNumber() {
+    GuardTracker t = new GuardTracker();
+    t.track(
+        binop(
+            "t0",
+            TacOperand.Const.ofInt(Integer.MAX_VALUE),
+            TacOperand.Const.ofInt(2),
+            BinaryOperator.DIV));
+    t.track(binop("t1", v("data"), v("t0"), BinaryOperator.LT));
+    t.track(branch(v("t1")));
+    assertThat(t.activeGuards()).hasSize(1);
+    assertThat(t.activeGuards().get(0).literalDescription()).isEqualTo("1073741823");
+  }
+
+  /**
+   * A folded constant follows the binding.
+   *
+   * <p>After {@code int limit = Integer.MAX_VALUE / 2;} the {@code data < limit} comparison uses
+   * the same bound.
+   */
+  @Test
+  void aConstantFoldedBoundFollowsTheBinding() {
+    GuardTracker t = new GuardTracker();
+    t.track(
+        binop(
+            "t0",
+            TacOperand.Const.ofInt(Integer.MAX_VALUE),
+            TacOperand.Const.ofInt(2),
+            BinaryOperator.DIV));
+    // limit = t0
+    t.track(
+        TacInstruction.builder(TacInstruction.Kind.MOVE).dest(v("limit")).lhs1(v("t0")).build());
+    // t1 = data < limit
+    t.track(binop("t1", v("data"), v("limit"), BinaryOperator.LT));
+    t.track(branch(v("t1")));
+    assertThat(t.isGuardedBy(v("data"), BinaryOperator.LT)).isTrue();
+  }
+
+  /**
+   * A folded constant that would be wrong is <b>not</b> folded.
+   *
+   * <p>{@code Integer.MAX_VALUE * 2} overflows in int arithmetic, so the expression does NOT have
+   * the value we would compute; recording a wrong bound is worse than recording none -- it silences
+   * a real finding.
+   */
+  @Test
+  void aConstantFoldThatOverflowsIsNotFolded() {
+    GuardTracker t = new GuardTracker();
+    // t0 = Integer.MAX_VALUE * 2  (overflows)
+    t.track(
+        binop(
+            "t0",
+            TacOperand.Const.ofInt(Integer.MAX_VALUE),
+            TacOperand.Const.ofInt(2),
+            BinaryOperator.MUL));
+    // t1 = data < t0
+    t.track(binop("t1", v("data"), v("t0"), BinaryOperator.LT));
+    t.track(branch(v("t1")));
+    assertThat(t.isGuardedBy(v("data"), BinaryOperator.LT)).isFalse();
+  }
 }

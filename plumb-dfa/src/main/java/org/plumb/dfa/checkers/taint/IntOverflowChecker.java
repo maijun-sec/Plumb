@@ -404,7 +404,63 @@ public final class IntOverflowChecker extends TaintedCheckerBase {
           || this.isOperandGuarded(ins.lhs2, BinaryOperator.GT)
           || this.isOperandGuarded(ins.lhs2, BinaryOperator.GE);
     }
+    if (op == BinaryOperator.MUL) {
+      return this.isBoundedProduct(ins);
+    }
     return false;
+  }
+
+  /**
+   * Is the multiplication's overflow direction ruled out by the operand's upper bound?
+   *
+   * <p>A product overflows when it exceeds the type's maximum, so the operand's upper bound decides
+   * it -- but only if the bound is <b>tight enough</b>. {@code data < Integer.MAX_VALUE} does
+   * <b>not</b> stop {@code data * 2} from overflowing (data may be MAX-1), while {@code data <
+   * (Integer.MAX_VALUE / 2)} does. One of them is a real fix and the other is not, and only the
+   * bound's <b>value</b> tells them apart -- which is why this reads {@link
+   * GuardTracker#upperBoundOf} rather than asking whether a bound exists.
+   *
+   * <p>The multiplier has to be a known constant: with an unknown multiplier there is no number to
+   * check the bound against, and guessing would suppress a finding that is real.
+   *
+   * <p>This is the one place where the bound's strictness matters, so it is resolved here: {@code
+   * data < K} means {@code data <= K - 1}.
+   */
+  private boolean isBoundedProduct(TacInstruction ins) {
+    boolean lhs1Hazard =
+        ins.lhs1 instanceof TacOperand.TacVar v1 && this.taintedVars.containsKey(v1);
+    boolean lhs2Hazard =
+        ins.lhs2 instanceof TacOperand.TacVar v2 && this.taintedVars.containsKey(v2);
+    // Exactly one hazardous side: with two, the product's size is not bounded by either.
+    if (lhs1Hazard == lhs2Hazard) return false;
+    TacOperand.TacVar hazard =
+        lhs1Hazard ? (TacOperand.TacVar) ins.lhs1 : (TacOperand.TacVar) ins.lhs2;
+    Long multiplier = IntOverflowChecker.constRhsValue(ins.lhs1, ins.lhs2, lhs1Hazard, lhs2Hazard);
+    if (multiplier == null) return false;
+    // A negative multiplier makes the product overflow at the OTHER end, so the operand's
+    // upper bound says nothing about it.
+    if (multiplier < 0) return false;
+    if (multiplier == 0) return true; // x * 0 is 0
+    Long upper = this.guards.upperBoundOf(hazard);
+    if (upper == null) return false;
+    // hazard <= upper  =>  hazard * multiplier <= upper * multiplier, and that fits in the
+    // type exactly when upper <= max / multiplier. The division avoids overflowing the
+    // multiplication itself.
+    return upper <= maxOf(hazard.type()) / multiplier;
+  }
+
+  /**
+   * The largest value of the given type.
+   *
+   * <p>An UNKNOWN type gets the widest bound, because an unknown type may be a {@code long} and a
+   * {@code long} does not overflow where an {@code int} would. Byte and short widen to {@code int}
+   * in Java's arithmetic, so they get the {@code int} bound.
+   */
+  private static long maxOf(TacType type) {
+    if (type == TacType.BYTE || type == TacType.SHORT || type == TacType.INT) {
+      return Integer.MAX_VALUE;
+    }
+    return Long.MAX_VALUE;
   }
 
   private boolean isOperandGuarded(TacOperand operand, BinaryOperator guardOp) {

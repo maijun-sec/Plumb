@@ -360,7 +360,55 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
           || this.isOperandGuarded(ins.lhs2, BinaryOperator.GT)
           || this.isOperandGuarded(ins.lhs2, BinaryOperator.GE);
     }
+    if (op == BinaryOperator.MUL) {
+      return this.isBoundedProductUnderflow(ins);
+    }
     return false;
+  }
+
+  /**
+   * Is the multiplication's underflow direction ruled out by the operand's lower bound?
+   *
+   * <p>The mirror of {@code IntOverflowChecker#isBoundedProduct}: a product underflows when it
+   * drops below the type's minimum, so the operand's LOWER bound decides it -- and only if the
+   * bound is tight enough. {@code data > 0} rules out the underflow of {@code data * 2}; {@code
+   * data > Integer.MIN_VALUE} does not.
+   *
+   * <p>The multiplier has to be a known constant: with an unknown multiplier there is no number to
+   * check the bound against.
+   */
+  private boolean isBoundedProductUnderflow(TacInstruction ins) {
+    boolean lhs1Hazard = this.isRealHazard(ins.lhs1) != null;
+    boolean lhs2Hazard = this.isRealHazard(ins.lhs2) != null;
+    // Exactly one hazardous side: with two, the product's size is not bounded by either.
+    if (lhs1Hazard == lhs2Hazard) return false;
+    TacOperand.TacVar hazard =
+        lhs1Hazard ? (TacOperand.TacVar) ins.lhs1 : (TacOperand.TacVar) ins.lhs2;
+    Long multiplier = IntUnderflowChecker.constRhsValue(ins.lhs1, ins.lhs2, lhs1Hazard, lhs2Hazard);
+    if (multiplier == null) return false;
+    // A negative multiplier makes the product overflow at the other end, so the operand's
+    // lower bound says nothing about it.
+    if (multiplier < 0) return false;
+    if (multiplier == 0) return true; // x * 0 is 0
+    Long lower = this.guards.lowerBoundOf(hazard);
+    if (lower == null) return false;
+    // hazard >= lower  =>  hazard * multiplier >= lower * multiplier, and that stays above the
+    // type's minimum exactly when lower >= min / multiplier. Java's division truncates toward
+    // zero, which makes the bound STRICTER than the exact one -- the safe direction.
+    return lower >= minOf(hazard.type()) / multiplier;
+  }
+
+  /**
+   * The smallest value of the given type.
+   *
+   * <p>An UNKNOWN type gets the widest bound, because an unknown type may be a {@code long}. Byte
+   * and short widen to {@code int} in Java's arithmetic.
+   */
+  private static long minOf(TacType type) {
+    if (type == TacType.BYTE || type == TacType.SHORT || type == TacType.INT) {
+      return Integer.MIN_VALUE;
+    }
+    return Long.MIN_VALUE;
   }
 
   private boolean isOperandGuarded(TacOperand operand, BinaryOperator guardOp) {
