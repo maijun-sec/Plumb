@@ -2791,16 +2791,38 @@ public final class DfaEngine {
   }
 
   /**
-   * Walk the function's instructions once and collect the guard facts they prove.
+   * 按<b>线性指令序</b>走一遍函数，收集每条指令成立时的守卫事实。
    *
-   * <p>The tracker is fed the same order the checkers see, so the facts it holds are the ones that
-   * hold at the point each checker asks.
+   * <p><b>为什么必须是线性序，而不是 CFG 遍历序。</b>守卫追踪器的压栈/弹栈纪律是按翻译器的 <b>线性布局</b>写的：{@code translateIf}
+   * 发出的是「BRANCH → then 块 → JUMP → else 块」， 守卫在 BRANCH 处压栈、在 then 块末尾那条 JUMP 处弹栈。而 CFG 的 RPO 序把
+   * <b>else 块排在 then 块之前</b>（后序先完成先访问，反过来就是 false 分支在前），于是线性纪律全被打乱：
+   *
+   * <ul>
+   *   <li>else 块会带上本该只属于 then 块的「真边守卫」；
+   *   <li>then 块以 {@code return} 收尾时，它末尾那条 JUMP 在 CFG 里<b>不可达</b> （块的终结指令是 RETURN，没有后继），RPO
+   *       只能把它排到整个函数的最后 ⇒ 弹栈迟到 ⇒ 守卫泄漏到后面的所有指令上。
+   * </ul>
+   *
+   * <p>泄漏的方向是<b>不安全</b>的：它会盖住真 finding。以 return 收尾的分支块之后，代码继承了 本不该继承的守卫：
+   *
+   * <pre>
+   *   if (n &gt; 5 &amp;&amp; n &lt; 3) { return; }
+   *   sink(n);                      // 被误消音
+   * </pre>
+   *
+   * <p>它也是 B0.2b「被调用者发布返回值释放条件」算错的原因：第二个 {@code return} 明明是无条件 释放，却带着上一个分支的矛盾守卫，调用方据此以为「污点出不来」而消音。
+   *
+   * <p>线性序同时也是 {@code PathScopedGuardTest} 钉住的语义：「守卫在自己的块结束时被弹掉， 块之后的代码不受它影响」。引擎此前喂 CFG
+   * 序，等于让同一个量具在两套语义下各说各话。
+   *
+   * <p>注意：这里仍然逐条调用 {@code recordPosition}，所以「某条指令处有什么条件成立」这张表
+   * 依然是<b>按指令下标</b>查询的，与遍历序无关——查表的那一方（checker）走的是 CFG 序，两者 不冲突。
    */
-  private org.plumb.dfa.taint.GuardTracker collectFunctionGuards(
-      TacFunction fn, List<Integer> order) {
+  private org.plumb.dfa.taint.GuardTracker collectFunctionGuards(TacFunction fn) {
     org.plumb.dfa.taint.GuardTracker tracker = new org.plumb.dfa.taint.GuardTracker();
     try {
-      for (int idx : order) {
+      int count = fn.instructionCount();
+      for (int idx = 0; idx < count; idx++) {
         TacInstruction ins = fn.instructionAt(idx);
         if (ins == null) continue;
         // Record the guards IN FORCE at this instruction BEFORE tracking it. The snapshot
@@ -2843,7 +2865,7 @@ public final class DfaEngine {
     //
     // The walk is skipped when no checker will consult the solver: the tracker does real work
     // per instruction, and a run with path verification off should not pay for it.
-    ctx.setFunctionGuards(pathVerificationEnabled(ctx) ? collectFunctionGuards(fn, order) : null);
+    ctx.setFunctionGuards(pathVerificationEnabled(ctx) ? collectFunctionGuards(fn) : null);
     try {
       for (DfaChecker c : checkers) {
         if (!DfaEngine.isEnabled(c.config(ctx))) continue;

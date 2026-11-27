@@ -234,6 +234,95 @@ class ValueAliasGuardTest {
       }
       """;
 
+  // ─── B0.2b: the guard is in the CALLEE, and the value comes back across the call
+  // boundary ───────────────────────────────────────────────────────────────────────────
+
+  /** The guard is in the callee, and the tainted value leaves it as the return value. */
+  private static final String GUARD_IN_CALLEE =
+      """
+      package mini;
+      import java.sql.SQLException;
+      import java.sql.Statement;
+      public class GuardInCallee {
+        int parse(java.io.BufferedReader reader) throws Exception {
+          int n = Integer.parseInt(reader.readLine());
+          if (n > 5 && n < 3) {
+            return n;
+          }
+          return 0;
+        }
+        public void go(Statement st, java.io.BufferedReader reader) throws Exception {
+          int v = parse(reader);
+          st.executeQuery("SELECT * FROM t WHERE c = '" + v + "'");
+        }
+      }
+      """;
+
+  /** The callee hands the tainted value back with no condition at all. */
+  private static final String UNCONDITIONAL_RETURN =
+      """
+      package mini;
+      import java.sql.SQLException;
+      import java.sql.Statement;
+      public class UnconditionalReturn {
+        int parse(java.io.BufferedReader reader) throws Exception {
+          return Integer.parseInt(reader.readLine());
+        }
+        public void go(Statement st, java.io.BufferedReader reader) throws Exception {
+          int v = parse(reader);
+          st.executeQuery("SELECT * FROM t WHERE c = '" + v + "'");
+        }
+      }
+      """;
+
+  /** The callee's guard can hold, so the value really does come back. */
+  private static final String REACHABLE_GUARD_IN_CALLEE =
+      """
+      package mini;
+      import java.sql.SQLException;
+      import java.sql.Statement;
+      public class ReachableGuardInCallee {
+        int parse(java.io.BufferedReader reader) throws Exception {
+          int n = Integer.parseInt(reader.readLine());
+          if (n > 5 && n > 3) {
+            return n;
+          }
+          return 0;
+        }
+        public void go(Statement st, java.io.BufferedReader reader) throws Exception {
+          int v = parse(reader);
+          st.executeQuery("SELECT * FROM t WHERE c = '" + v + "'");
+        }
+      }
+      """;
+
+  /**
+   * The callee releases the tainted value TWICE: once under a condition that cannot hold, and once
+   * with no condition at all.
+   *
+   * <p>The two releases are ALTERNATIVES, so the taint arrives when EITHER of them happens -- and
+   * one of them always happens.
+   */
+  private static final String ONE_UNCONDITIONAL_RELEASE =
+      """
+      package mini;
+      import java.sql.SQLException;
+      import java.sql.Statement;
+      public class OneUnconditionalRelease {
+        int parse(java.io.BufferedReader reader) throws Exception {
+          int n = Integer.parseInt(reader.readLine());
+          if (n > 5 && n < 3) {
+            return n;
+          }
+          return n;
+        }
+        public void go(Statement st, java.io.BufferedReader reader) throws Exception {
+          int v = parse(reader);
+          st.executeQuery("SELECT * FROM t WHERE c = '" + v + "'");
+        }
+      }
+      """;
+
   @TempDir Path tmp;
 
   @Test
@@ -339,6 +428,53 @@ class ValueAliasGuardTest {
 
     assertThat(inFile(findings, "ContainerHoldsAnotherValue.java"))
         .as("the container holds a different value, so the guard on this one says nothing about it")
+        .hasSize(1);
+  }
+
+  @Test
+  void aGuardInTheCalleeConstrainsTheValueThatComesBack() throws Exception {
+    String dir = "j" + uid();
+    List<Finding> findings = scan(List.of(translate(dir + "/GuardInCallee.java", GUARD_IN_CALLEE)));
+
+    assertThat(inFile(findings, "GuardInCallee.java"))
+        .as(
+            "the callee releases the tainted value only under a condition no value satisfies, so"
+                + " the value that comes back is not the tainted one")
+        .isEmpty();
+  }
+
+  @Test
+  void anUnconditionalReturnFromTheCalleeStillReachesTheSink() throws Exception {
+    String dir = "k" + uid();
+    List<Finding> findings =
+        scan(List.of(translate(dir + "/UnconditionalReturn.java", UNCONDITIONAL_RETURN)));
+
+    assertThat(inFile(findings, "UnconditionalReturn.java"))
+        .as("the callee hands the tainted value back with no condition, so it really arrives")
+        .hasSize(1);
+  }
+
+  @Test
+  void aReachableGuardInTheCalleeDoesNotSilenceTheSink() throws Exception {
+    String dir = "l" + uid();
+    List<Finding> findings =
+        scan(List.of(translate(dir + "/ReachableGuardInCallee.java", REACHABLE_GUARD_IN_CALLEE)));
+
+    assertThat(inFile(findings, "ReachableGuardInCallee.java"))
+        .as("the callee's bounds can both hold, so the path really exists")
+        .hasSize(1);
+  }
+
+  @Test
+  void oneUnconditionalReleaseKeepsTheOtherAlternativesAlive() throws Exception {
+    String dir = "m" + uid();
+    List<Finding> findings =
+        scan(List.of(translate(dir + "/OneUnconditionalRelease.java", ONE_UNCONDITIONAL_RELEASE)));
+
+    assertThat(inFile(findings, "OneUnconditionalRelease.java"))
+        .as(
+            "the two releases are alternatives: the unconditional one always happens, so the"
+                + " tainted value arrives however the contradictory branch is read")
         .hasSize(1);
   }
 

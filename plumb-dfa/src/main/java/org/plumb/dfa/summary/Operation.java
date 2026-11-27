@@ -57,6 +57,7 @@ public sealed interface Operation
         Operation.UnmodelledCall,
         Operation.SolverZ3Predicate,
         Operation.SolverZ3Precondition,
+        Operation.ReturnGuardFacts,
         Operation.PointsToPropagate,
         Operation.PersistsParam,
         Operation.RangeSeed {
@@ -238,6 +239,66 @@ public sealed interface Operation
     public SolverZ3Predicate {
       Objects.requireNonNull(predicate, "predicate");
       pathVars = pathVars == null ? java.util.Set.of() : java.util.Set.copyOf(pathVars);
+    }
+  }
+
+  /**
+   * The condition under which ONE of this function's tainted return values actually leaves the
+   * function.
+   *
+   * <p>A function that hands a tainted value back does not hand it back on every path:
+   *
+   * <pre>
+   *   int parse(BufferedReader r) {
+   *     int n = Integer.parseInt(r.readLine());
+   *     if (n &gt; 5 &amp;&amp; n &lt; 3) {   // a condition no value satisfies
+   *       return n;                      // so THIS return never happens
+   *     }
+   *     return 0;                         // and this one is clean
+   *   }
+   * </pre>
+   *
+   * <p>The caller cannot see the body, so the callee has to publish the condition: the tainted
+   * return happens only under {@code n > 5 && n < 3}. The caller then asks whether that condition
+   * is SATISFIABLE.
+   *
+   * <p><b>Why the caller does NOT conjoin this with its own path condition.</b> A callee's
+   * condition is about a variable the caller knows nothing about, at a point in the program the
+   * caller's own guards do not describe. Conjoining the two would be a statement about two
+   * different variables at two different points, and it would be UNSAT for a reason that has
+   * nothing to do with the program. So this fact is EVALUATED ALONE: the caller asks "can this
+   * condition hold?", and uses only the answer.
+   *
+   * <p><b>Why several of these are ALTERNATIVES.</b> A function with two tainted returns has two of
+   * these, and the taint reaches the caller when EITHER of them can happen -- a disjunction, not a
+   * conjunction. So the caller asks "is ANY of them satisfiable?", and the taint is unreachable
+   * only when ALL of them are unsatisfiable.
+   *
+   * <p><b>Why an EMPTY fact list is meaningful.</b> It says "this tainted return happens
+   * unconditionally". Without it, a function with one unconditional tainted return and one
+   * conditioned one would look like it had only the conditioned one, and the caller would suppress
+   * a taint that really does arrive.
+   *
+   * <p><b>Why the rule id is part of the fact.</b> The engine merges EVERY checker's summary for a
+   * function into one, and each checker reads that merged summary. Two rules track different
+   * sources, so their taint states differ, and a condition published for one rule's taint says
+   * nothing about the other rule's taint. Carrying the rule id keeps the fact with the rule that
+   * produced it: a rule only ever reads its OWN facts, so one rule's unreachable return can never
+   * silence another rule's finding.
+   *
+   * <p>The facts name the CALLEE's variables. They are not renamed to the caller's names, because
+   * they are never compared with the caller's own guards -- only their satisfiability is asked
+   * about.
+   *
+   * @param ruleId the rule whose taint these facts are about
+   * @param facts the conditions in force at the return site
+   */
+  record ReturnGuardFacts(
+      String ruleId, java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> facts)
+      implements Operation {
+    public ReturnGuardFacts {
+      ruleId = ruleId == null ? "" : ruleId;
+      facts = facts == null ? java.util.List.of() : java.util.List.copyOf(facts);
     }
   }
 

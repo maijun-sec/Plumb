@@ -787,6 +787,38 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    */
   private record PassedOut(int resultIndex, TacOperand.TacVar value) {}
 
+  // The sites where a TAINTED value leaves this function, and the conditions under which
+  // each of them does.
+  //
+  // A return site is not "the function returns tainted data": it is "ON THIS PATH the
+  // function returns tainted data". The difference is the whole point -- `return n` inside
+  // a branch whose condition no value satisfies never happens, so the taint does not leave
+  // through it.
+  //
+  // The conditions are recorded AT the return site, while the analysis is standing there,
+  // because that is the only place where "the guards in force" means what it says.
+  private final List<ReturnGuardSite> returnGuardSites = new ArrayList<>();
+
+  /** One site where a tainted value leaves the function, and the conditions under which it does. */
+  private record ReturnGuardSite(
+      int slot, java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> facts) {}
+
+  // The conditions under which the values that arrived from CALLEES were released there,
+  // keyed by the caller's variable that received them.
+  //
+  // A callee publishes the condition under which each of its tainted returns happens (see
+  // Operation.ReturnGuardFacts). The caller keeps those conditions with the variable it
+  // received, because the condition is a statement about the VALUE, and the value is what
+  // reaches the sink.
+  //
+  // The value is a LIST of ALTERNATIVES: a callee with two tainted returns releases the
+  // taint under one condition OR the other, so the conditions are a disjunction, not a
+  // conjunction.
+  private final Map<
+          String,
+          java.util.List<java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact>>>
+      importedReturnConditions = new LinkedHashMap<>();
+
   private final List<PassedOut> passedOutTaint = new ArrayList<>();
 
   /**
@@ -1503,6 +1535,8 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     pathConditionFragments.clear();
     thrownTaintByInsnIdentity.clear();
     passedOutTaint.clear();
+    returnGuardSites.clear();
+    importedReturnConditions.clear();
     paramWrites.clear();
     // Per-function accumulators: stringOps, fieldOps, the field-taint
     // tracker, and class-ref TacVars are all local to one function.
@@ -1994,7 +2028,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // summary-fold path would silently miss
         // any "helper(s) -> s" style
         // propagation.
-        recordPassedOutResults(ins);
+        recordPassedOutResults(ins, ctx);
       }
       // try / catch / finally IR.
       //
@@ -2045,7 +2079,7 @@ public abstract class TaintedCheckerBase implements DfaChecker {
         // clean, and a sink that consumed that error was never reported. The THROW's
         // own semantics -- the exception exit, the thrown type, the catch matching -- are
         // untouched by this; the results only ride along.
-        recordPassedOutResults(ins);
+        recordPassedOutResults(ins, ctx);
       }
       default -> {}
     }
@@ -2099,13 +2133,62 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * <p>Called for {@code RETURN} and for {@code THROW}. A THROW that names no results contributes
    * nothing, which is the ordinary case for an exception.
    */
-  private void recordPassedOutResults(TacInstruction ins) {
+  private void recordPassedOutResults(TacInstruction ins, AnalysisContext ctx) {
     int resultCount = ins.resultCount();
     for (int slot = 0; slot < resultCount; slot++) {
       if (ins.resultDestAt(slot) instanceof TacOperand.TacVar ret) {
         passedOutTaint.add(new PassedOut(slot, ret));
+        recordReturnGuardSite(slot, ret, ctx);
       }
     }
+  }
+
+  /**
+   * Record the conditions under which a TAINTED value leaves this function through the given result
+   * slot.
+   *
+   * <p>The facts are the guards in force AT this return site, about the value the site hands back.
+   * They are read here, while the analysis stands at the site, because "the guards in force" only
+   * means something at a position -- the function-wide union would be a statement about no path at
+   * all.
+   *
+   * <p>The facts are re-spelled with the RETURNED value's name, so that the contradiction check can
+   * compare them with each other: two facts about the same value have to carry the same name to be
+   * comparable at all.
+   *
+   * <p>A clean return records nothing. There is no taint to constrain, so there is no condition to
+   * publish -- and a caller that asks "can the tainted return happen?" must not be told about a
+   * return that carries no taint.
+   *
+   * @param slot the result slot the value leaves through
+   * @param ret the value the site hands back
+   * @param ctx the analysis context, which holds the path-scoped guard facts
+   */
+  private void recordReturnGuardSite(int slot, TacOperand.TacVar ret, AnalysisContext ctx) {
+    if (ret == null) return;
+    // The taint is read HERE, at the site, and not at the end of the function: a function
+    // that returns a tainted value on one path and a constant on another must publish the
+    // condition of the tainted path only, and the end-of-function state cannot tell the two
+    // apart.
+    if (!taintedVars.containsKey(ret)) return;
+    java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> facts =
+        new ArrayList<>();
+    org.plumb.dfa.taint.GuardTracker tracker = ctx == null ? null : ctx.functionGuards();
+    if (tracker != null && tracker.hasRecordedPositions() && currentInstructionIndex >= 0) {
+      // The guards that talk about the VALUE leaving here -- not only about the returned
+      // variable's own NAME. A copy makes two names one value, and the guard is usually
+      // written on one of them.
+      java.util.Set<String> sameValue = valueAliases.groupAt(ret.name(), currentInstructionIndex);
+      for (org.plumb.dfa.taint.GuardTracker.Guard g : tracker.guardsAt(currentInstructionIndex)) {
+        if (g == null) continue;
+        String guarded = g.boundedVar() == null ? null : g.boundedVar().name();
+        if (guarded == null || !sameValue.contains(guarded)) continue;
+        facts.add(
+            new org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact(
+                ret.name(), g.op(), g.literalDescription(), g.isArrayLengthBound()));
+      }
+    }
+    returnGuardSites.add(new ReturnGuardSite(slot, facts));
   }
 
   /**
@@ -6241,9 +6324,24 @@ public abstract class TaintedCheckerBase implements DfaChecker {
    * the question being asked.
    */
   private boolean sourceHasContradictoryGuards(TacOperand.TacVar av, AnalysisContext ctx) {
-    return org.plumb.dfa.solver.GuardPredicateTranslator.findContradiction(
-            sourceGuardFacts(av, ctx))
-        != null;
+    if (org.plumb.dfa.solver.GuardPredicateTranslator.findContradiction(sourceGuardFacts(av, ctx))
+        != null) {
+      return true;
+    }
+    // The value may also have arrived through a CALLEE. When EVERY condition the callee
+    // published for that release is contradictory, the value cannot have arrived at all --
+    // so the tainted value does not reach the sink.
+    java.util.List<java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact>>
+        alternatives = importedReturnAlternatives(av, ctx);
+    if (alternatives.isEmpty()) return false;
+    for (java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> alt :
+        alternatives) {
+      if (alt.isEmpty()) return false;
+      if (org.plumb.dfa.solver.GuardPredicateTranslator.findContradiction(alt) == null) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -6346,7 +6444,18 @@ public abstract class TaintedCheckerBase implements DfaChecker {
   private String guardPathCondition(TacOperand.TacVar arg, AnalysisContext ctx) {
     String condition =
         org.plumb.dfa.solver.GuardPredicateTranslator.conjunction(sourceGuardFacts(arg, ctx));
-    return condition.isEmpty() ? null : condition;
+    // The value may also have arrived through a CALLEE, under conditions the callee
+    // published. Those conditions are about the same value at an earlier point, so they
+    // are CONJOINED with the caller's own: the value is here only if the caller's path
+    // holds AND the callee released it.
+    String imported = importedReturnCondition(arg, ctx);
+    if (condition.isEmpty()) {
+      return imported.isEmpty() ? null : imported;
+    }
+    if (imported.isEmpty()) {
+      return condition;
+    }
+    return "(" + condition + ") && (" + imported + ")";
   }
 
   /**
@@ -6739,6 +6848,180 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     return projected;
   }
 
+  /**
+   * Keep the conditions under which the callee released a tainted value, with the variable that
+   * received it.
+   *
+   * <p>The facts are re-spelled with the RECEIVER's name: after the merge they are statements about
+   * ONE value, and two statements about the same value have to carry the same name for the
+   * contradiction check to compare them.
+   *
+   * <p>Only this rule's own facts are read. The engine merges every checker's summary for a
+   * function into one, and two rules track different sources, so another rule's unreachable return
+   * says nothing about this rule's taint.
+   *
+   * @param dest the variable that received the value
+   * @param ops the operations the callee published for the value in question
+   */
+  private void recordImportedReturnConditions(
+      TacOperand.TacVar dest, java.util.Collection<Operation> ops) {
+    if (dest == null || ops == null || ops.isEmpty()) return;
+    for (Operation op : ops) {
+      if (!(op instanceof Operation.ReturnGuardFacts f)) continue;
+      if (!f.ruleId().equals(rule.ruleId())) continue;
+      java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> renamed =
+          new ArrayList<>();
+      for (org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact g : f.facts()) {
+        if (g == null) continue;
+        renamed.add(
+            new org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact(
+                dest.name(), g.operator(), g.literal(), g.arrayLengthBound()));
+      }
+      importedReturnConditions.computeIfAbsent(dest.name(), k -> new ArrayList<>()).add(renamed);
+    }
+  }
+
+  /**
+   * The conditions under which the value at the sink may have arrived from a CALLEE.
+   *
+   * <p>They are found by ALIAS GROUP, exactly like the caller's own guards: the value that reaches
+   * the sink is usually a temporary built from the one that arrived, and the conditions are about
+   * the VALUE, not about the name.
+   *
+   * @param av the sink's argument
+   * @param ctx the analysis context
+   * @return the alternatives, each a list of facts; never null
+   */
+  private java.util.List<java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact>>
+      importedReturnAlternatives(TacOperand.TacVar av, AnalysisContext ctx) {
+    java.util.List<java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact>> out =
+        new ArrayList<>();
+    if (av == null || importedReturnConditions.isEmpty()) return out;
+    int at = ctx == null ? -1 : ctx.currentInstructionIndex();
+    java.util.Set<String> sameValue = valueAliases.groupAt(av.name(), at);
+    for (Map.Entry<
+            String,
+            java.util.List<java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact>>>
+        e : importedReturnConditions.entrySet()) {
+      if (!sameValue.contains(e.getKey())) continue;
+      for (java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> alt :
+          e.getValue()) {
+        java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> renamed =
+            new ArrayList<>();
+        for (org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact g : alt) {
+          if (g == null) continue;
+          renamed.add(
+              new org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact(
+                  av.name(), g.operator(), g.literal(), g.arrayLengthBound()));
+        }
+        out.add(renamed);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The path condition the CALLEE's release conditions add to the caller's own.
+   *
+   * <p>The alternatives are a DISJUNCTION: the callee released the value under one of them, so the
+   * value can be here when ANY of them holds. An alternative with no facts means the release was
+   * unconditional, and then the imported condition constrains nothing.
+   *
+   * @param av the sink's argument
+   * @param ctx the analysis context
+   * @return the condition, or the empty string when there is none
+   */
+  private String importedReturnCondition(TacOperand.TacVar av, AnalysisContext ctx) {
+    java.util.List<java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact>>
+        alternatives = importedReturnAlternatives(av, ctx);
+    if (alternatives.isEmpty()) return "";
+    java.util.List<String> terms = new ArrayList<>();
+    for (java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> alt :
+        alternatives) {
+      if (alt.isEmpty()) {
+        // An unconditional release: the value can always be here, so the imported
+        // condition says nothing.
+        return "";
+      }
+      String c = org.plumb.dfa.solver.GuardPredicateTranslator.conjunction(alt);
+      if (!c.isEmpty()) terms.add(c);
+    }
+    if (terms.isEmpty()) return "";
+    // Each term is parenthesised on its own, and the terms are joined with a plain
+    // "||".  A term is itself a conjunction ("(a) && (b)"), so joining the RAW terms
+    // with ") || (" leaves the parentheses unbalanced -- the solver then cannot parse
+    // the predicate, answers "satisfiable" (the conservative answer), and every
+    // finding the path condition was there to suppress comes back.
+    java.util.List<String> wrapped = new ArrayList<>();
+    for (String term : terms) {
+      wrapped.add("(" + term + ")");
+    }
+    if (wrapped.size() == 1) return wrapped.get(0);
+    return "(" + String.join(" || ", wrapped) + ")";
+  }
+
+  /**
+   * Can the callee's tainted return value actually leave the callee?
+   *
+   * <p>The callee publishes one {@link Operation.ReturnGuardFacts} per tainted return site: the
+   * condition under which that site hands the taint back. The sites are ALTERNATIVES, so the taint
+   * arrives when ANY of them can happen.
+   *
+   * <p>The conditions are asked about ALONE. They name the callee's variables, at the callee's
+   * exit; conjoining them with the caller's own path condition would be a statement about two
+   * different variables at two different points, and an UNSAT answer to that would be a coincidence
+   * of names rather than a fact about the program.
+   *
+   * <p>Only this rule's OWN facts are read. The engine merges every checker's summary for a
+   * function into one, and two rules track different sources, so another rule's unreachable return
+   * says nothing about this rule's taint.
+   *
+   * <p>No published condition means the callee said nothing about reachability, and the old
+   * behaviour stands: the taint arrives.
+   *
+   * @param ops the operations the callee published for the value in question
+   * @return true when the tainted return value can reach the caller
+   */
+  private boolean taintCanLeave(java.util.Collection<Operation> ops) {
+    if (ops == null || ops.isEmpty()) return true;
+    java.util.List<Operation.ReturnGuardFacts> sites = new ArrayList<>();
+    for (Operation op : ops) {
+      if (op instanceof Operation.ReturnGuardFacts f && f.ruleId().equals(rule.ruleId())) {
+        sites.add(f);
+      }
+    }
+    if (sites.isEmpty()) return true;
+    for (Operation.ReturnGuardFacts site : sites) {
+      // An empty fact list means "this return happens unconditionally", so the taint
+      // arrives. A site with facts arrives when its condition can hold.
+      if (site.facts().isEmpty()) return true;
+      if (conditionsCanHold(site.facts())) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Can the given conditions hold at the same time?
+   *
+   * <p>The arithmetic contradiction check comes first: it is exact for the shape that matters most
+   * (two bounds on one variable that no value satisfies) and it needs no solver. The solver is
+   * asked about the WHOLE conjunction, because a conjunction can contradict in ways no pair does.
+   *
+   * @param facts the conditions
+   * @return true when they can hold together
+   */
+  private boolean conditionsCanHold(
+      java.util.List<org.plumb.dfa.solver.GuardPredicateTranslator.GuardFact> facts) {
+    if (facts == null || facts.isEmpty()) return true;
+    if (org.plumb.dfa.solver.GuardPredicateTranslator.findContradiction(facts) != null) {
+      return false;
+    }
+    if (solverBridge == null) return true;
+    String condition = org.plumb.dfa.solver.GuardPredicateTranslator.conjunction(facts);
+    if (condition.isEmpty()) return true;
+    return solverBridge.checkSatisfiable(condition) != SolverZ3Bridge.Result.UNSAT;
+  }
+
   private void propagateTaintFromCalleeSummary(TacInstruction ins, AnalysisContext ctx) {
     String calleeSig = ins.calleeSig;
     if (calleeSig == null) return;
@@ -7078,6 +7361,17 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (ins.dest instanceof TacOperand.TacVar destVar) {
       boolean retTainted =
           calleeSummary.returnOps().stream().anyMatch(op -> op instanceof Operation.TaintPropagate);
+      // The callee's taint only reaches the caller if the caller's destination is actually
+      // handed a tainted value. The callee published the condition under which each of its
+      // tainted returns happens; when NONE of them can happen, the taint does not arrive.
+      if (retTainted && !taintCanLeave(calleeSummary.returnOps())) {
+        retTainted = false;
+      }
+      // The conditions under which the callee's tainted return values actually leave it.
+      // They belong to the VALUE that arrived, so they are kept with the variable that
+      // received it -- and the sink reads them by alias group, the same way it reads the
+      // caller's own guards.
+      recordImportedReturnConditions(destVar, calleeSummary.returnOps());
       if (retTainted) {
         // Enrich the dest's taint
         // path and label with the
@@ -7158,6 +7452,12 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       boolean resTainted =
           calleeSummary.resultOpsAt(slot).stream()
               .anyMatch(op -> op instanceof Operation.TaintPropagate);
+      // The same reachability question as for the first result: the taint in a later
+      // result arrives only if one of that result's tainted return sites can happen.
+      if (resTainted && !taintCanLeave(calleeSummary.resultOpsAt(slot))) {
+        resTainted = false;
+      }
+      recordImportedReturnConditions(resVar, calleeSummary.resultOpsAt(slot));
       if (!resTainted) continue;
       String resLabel =
           enrichTaintLabelWithPassthroughs("callee-ret:" + calleeSig + "#r" + slot, calleeSummary);
@@ -8054,6 +8354,27 @@ public abstract class TaintedCheckerBase implements DfaChecker {
           b.recordResultTaintCause(slot, cause);
         }
         b.recordFoldDepth(callerCost);
+      }
+    }
+    // 1b'. The condition under which each tainted return ACTUALLY happens.
+    //
+    //     The return taint above says "this function returns tainted data". That is a
+    //     statement about the function, not about a path: a function whose only tainted
+    //     return sits behind a condition no value satisfies returns a CLEAN value on every
+    //     path that exists. The caller cannot see the body, so the condition has to travel
+    //     with the taint -- one operation per tainted return site, because the sites are
+    //     ALTERNATIVES (the taint arrives when ANY of them can happen).
+    //
+    //     The rule id rides along: the engine merges every checker's summary for a function
+    //     into one, and each rule tracks its own sources, so a condition published for one
+    //     rule's taint must not silence another rule's finding.
+    for (ReturnGuardSite site : returnGuardSites) {
+      Operation.ReturnGuardFacts facts =
+          new Operation.ReturnGuardFacts(rule.ruleId(), site.facts());
+      if (site.slot() == 0) {
+        b.recordReturnOp(facts);
+      } else {
+        b.recordResultOp(site.slot(), facts);
       }
     }
     // 1c. The taint this function writes INTO a formal parameter.

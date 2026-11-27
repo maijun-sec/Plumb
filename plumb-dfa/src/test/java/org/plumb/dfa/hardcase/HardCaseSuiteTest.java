@@ -108,16 +108,15 @@ class HardCaseSuiteTest {
    * passable when the field and the container recorded WHICH VALUE went into them, so the value
    * read back out is the value the guard talks about.
    *
-   * <p><b>Why the set has 23 cases but the floor is 20.</b> The remaining three are <b>open</b>:
-   * the engine still gets them wrong, and they all have the same shape — the guard is in the CALLEE
-   * while the sink's argument is the value that came back across the call boundary, so the guard
-   * has to travel with the value rather than with the name. A path condition built from the sink's
-   * argument alone is therefore empty, and the contradiction is never asked about. They are in the
-   * set so that this gap has a number: an open case contributes 0 to the score, so the floor is
-   * unaffected, and the score moves when the mechanism starts following the VALUE rather than the
-   * variable name.
+   * <p><b>Why the set has 23 cases but the floor is 22.</b> The remaining one is <b>open</b>: the
+   * engine still gets it wrong. Its shape is that the guard is at the CALL SITE while the sink
+   * lives in the CALLEE, so the guard constrains the caller's value and the callee's own argument
+   * carries no guard at all — a path condition built from the sink's arguments alone is empty, and
+   * the contradiction is never asked about. It is in the set so that this gap has a number: an open
+   * case contributes 0 to the score, so the floor is unaffected, and the score moves when the
+   * mechanism carries the call site's reachability across the call boundary.
    */
-  private static final int FLOOR = 20;
+  private static final int FLOOR = 22;
 
   private static final String MANIFEST = "/hardcases/manifest.tsv";
 
