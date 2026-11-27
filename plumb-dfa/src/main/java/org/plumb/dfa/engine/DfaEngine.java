@@ -2791,32 +2791,45 @@ public final class DfaEngine {
   }
 
   /**
-   * 按<b>线性指令序</b>走一遍函数，收集每条指令成立时的守卫事实。
+   * Walk the function in <b>linear instruction order</b>, collecting the guard facts that hold at
+   * each instruction.
    *
-   * <p><b>为什么必须是线性序，而不是 CFG 遍历序。</b>守卫追踪器的压栈/弹栈纪律是按翻译器的 <b>线性布局</b>写的：{@code translateIf}
-   * 发出的是「BRANCH → then 块 → JUMP → else 块」， 守卫在 BRANCH 处压栈、在 then 块末尾那条 JUMP 处弹栈。而 CFG 的 RPO 序把
-   * <b>else 块排在 then 块之前</b>（后序先完成先访问，反过来就是 false 分支在前），于是线性纪律全被打乱：
+   * <p><b>Why the linear order and not the CFG traversal order.</b> The guard tracker's push/pop
+   * discipline is written against the translator's <b>linear layout</b>: {@code translateIf} emits
+   * "BRANCH -&gt; then block -&gt; JUMP -&gt; else block", the guard is pushed at the BRANCH and
+   * popped at the JUMP that ends the then block. The CFG's RPO order puts the <b>else block before
+   * the then block</b> (a post-order visits the false successor first, and reversing it keeps the
+   * false branch up front), which scrambles that linear discipline:
    *
    * <ul>
-   *   <li>else 块会带上本该只属于 then 块的「真边守卫」；
-   *   <li>then 块以 {@code return} 收尾时，它末尾那条 JUMP 在 CFG 里<b>不可达</b> （块的终结指令是 RETURN，没有后继），RPO
-   *       只能把它排到整个函数的最后 ⇒ 弹栈迟到 ⇒ 守卫泄漏到后面的所有指令上。
+   *   <li>the else block carries the "true edge" guard that belongs to the then block alone;
+   *   <li>when the then block ends in {@code return}, its trailing JUMP is <b>unreachable</b> in
+   *       the CFG (the block's terminator is the RETURN, which has no successor), so RPO can only
+   *       put it last in the whole function =&gt; the pop happens late =&gt; the guard leaks onto
+   *       every instruction after it.
    * </ul>
    *
-   * <p>泄漏的方向是<b>不安全</b>的：它会盖住真 finding。以 return 收尾的分支块之后，代码继承了 本不该继承的守卫：
+   * <p>The leak runs in the <b>unsafe</b> direction: it hides real findings. After a branch block
+   * that ends in a return, the code inherits a guard it must not inherit:
    *
    * <pre>
    *   if (n &gt; 5 &amp;&amp; n &lt; 3) { return; }
-   *   sink(n);                      // 被误消音
+   *   sink(n);                      // silenced by mistake
    * </pre>
    *
-   * <p>它也是 B0.2b「被调用者发布返回值释放条件」算错的原因：第二个 {@code return} 明明是无条件 释放，却带着上一个分支的矛盾守卫，调用方据此以为「污点出不来」而消音。
+   * <p>It is also why B0.2b ("the callee publishes the conditions under which the return value
+   * really leaves") computed the wrong thing: the second {@code return} releases unconditionally
+   * yet carries the previous branch's contradictory guard, so the caller believed the taint could
+   * not get out and silenced it.
    *
-   * <p>线性序同时也是 {@code PathScopedGuardTest} 钉住的语义：「守卫在自己的块结束时被弹掉， 块之后的代码不受它影响」。引擎此前喂 CFG
-   * 序，等于让同一个量具在两套语义下各说各话。
+   * <p>The linear order is also the semantics {@code PathScopedGuardTest} pins: "a guard is popped
+   * when its own block ends, and the code after the block is not affected by it". The engine
+   * previously fed the CFG order, which let one instrument tell two different stories.
    *
-   * <p>注意：这里仍然逐条调用 {@code recordPosition}，所以「某条指令处有什么条件成立」这张表
-   * 依然是<b>按指令下标</b>查询的，与遍历序无关——查表的那一方（checker）走的是 CFG 序，两者 不冲突。
+   * <p>Note that {@code recordPosition} is still called per instruction, so the table of "what
+   * holds at instruction N" is still queried <b>by instruction index</b>, independently of the
+   * traversal order -- the side that looks it up (the checker) walks the CFG order, and the two do
+   * not conflict.
    */
   private org.plumb.dfa.taint.GuardTracker collectFunctionGuards(TacFunction fn) {
     org.plumb.dfa.taint.GuardTracker tracker = new org.plumb.dfa.taint.GuardTracker();
