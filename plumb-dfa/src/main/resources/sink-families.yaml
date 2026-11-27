@@ -816,6 +816,11 @@ families:
         # the program was given is the first argument.
         - pattern: '^\\assert\b(/\d+)?'
           arg_index: 0
+        # proc_open runs a program the program names. The command is the
+        # FIRST argument, and when it is an ARRAY the code it runs is the
+        # array's own contents -- so both positions are named.
+        - pattern: '^\\proc_open\b(/\d+)?'
+          arg_index: [0, 1]
 
   command.sinks:
     cwe: CWE-78,CWE-77,CWE-88,CWE-93,CWE-114,CWE-147,CWE-494
@@ -2189,6 +2194,18 @@ families:
       php:
         # The bytes are the first argument.
         - pattern: '^\\unserialize\b(/\d+)?'
+          arg_index: 0
+        # yaml_parse builds objects out of the document it is given.
+        - pattern: '^\\yaml_parse\b(/\d+)?'
+          arg_index: 0
+        # Symfony's YAML component. The static entry point names its class.
+        - pattern: '^Symfony\\Component\\Yaml\\Yaml::parse\b(/\d+)?'
+          arg_index: 0
+        # The parser OBJECT's own parse method. The owner is the enclosing
+        # class when the parser's type could not be resolved, so the pattern
+        # names the METHOD and not the class: a document that is parsed into
+        # objects is what carries the risk.
+        - pattern: '::parse(/\d+)?$'
           arg_index: 0
       typescript,javascript,arkts:
         # The client objects are local variables, so the catalogue cannot know
@@ -3640,6 +3657,14 @@ families:
           arg_index: 0
         - pattern: '^"ldapjs"\.Client\.(compare|search)\b(/\d+)?'
           arg_index: 0
+      php:
+        # PHP's own LDAP functions. The filter is the third argument, but the
+        # BASE of the search is the second, and a base that carries the
+        # attacker's text is an injection too -- the server parses the base
+        # as part of the same filter expression. Both positions are named:
+        # one pattern, two positions.
+        - pattern: '^\\ldap_(search|read|list)\b(/\d+)?'
+          arg_index: [1, 2]
 
   log-injection.sinks:
     cwe: CWE-117
@@ -4012,6 +4037,36 @@ families:
         - pattern: '^set/2\b'
           arg_index: 1
         - pattern: '^"express"\.Response\.set/2\b'
+          arg_index: 1
+      php:
+        # The redirect helpers take the target as their first argument.
+        # Laravel's own redirect() is a global function, so its key carries
+        # the namespace separator and nothing else.
+        - pattern: '^\\redirect\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^Illuminate\\Support\\Facades\\Redirect::(away|to)\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^Symfony\\Component\\HttpFoundation\\RedirectResponse\.\<init\>(/\d+)?'
+          arg_index: 0
+        # The redirect response's own target setter. The TARGET is the first
+        # argument, and it is the only thing the method does.
+        - pattern: '^Symfony\\Component\\HttpFoundation\\RedirectResponse::setTargetUrl\b(/\d+)?'
+          arg_index: 0
+        # A response built with a Location header of the program's own making.
+        # The constructor's arguments are the body, the status and the
+        # headers, so the header is the THIRD of them -- and the header VALUE
+        # is what decides where the browser goes.
+        - pattern: '^Symfony\\Component\\HttpFoundation\\Response\.\<init\>(/\d+)?'
+          arg_index: 2
+        # The response object's own header method. The header's NAME is the
+        # first argument and the target is the second, so the target is what
+        # the pattern names.
+        #
+        # The owner is the enclosing class when the response's type could
+        # not be resolved, so the pattern names the METHOD and not the
+        # class: a response's `header` is the one that sets a header, and
+        # the value it carries decides where the browser goes.
+        - pattern: '::header(/\d+)?$'
           arg_index: 1
 
   privacy.sinks:
@@ -6965,6 +7020,25 @@ families:
         # writes it, with `::`: the SQL is the first argument.
         - pattern: '^\\mysqli::(query|multi_query|real_query|prepare)\b(/\d+)?'
           arg_index: 0
+        # The framework's database facade. The SQL is the first argument of
+        # each of them.
+        - pattern: '^Illuminate\\Support\\Facades\\DB::(select|selectOne|statement|unprepared|insert|update|delete|raw)\b(/\d+)?'
+          arg_index: 0
+        # The object-oriented API's own methods. The SQL is the first
+        # argument of each of them.
+        - pattern: '^Doctrine\\DBAL\\Connection::(executeQuery|executeStatement|prepare|query|exec)\b(/\d+)?'
+          arg_index: 0
+        # The query builder's condition methods. The CONDITION is the first
+        # argument of the plain ones and the SECOND of the column-and-value
+        # ones, so both positions are checked: the engine fires the finding
+        # when EITHER carries the taint.
+        - pattern: '::(where|orWhere|andWhere|whereRaw|orWhereRaw|andWhereRaw|having|havingRaw)\b(/\d+)?'
+          arg_index: [0, 1]
+        # The prepared statement's own method, reached through a handle whose
+        # type the front end could not resolve: the owner is then the class
+        # the code is in, so the pattern names the METHOD and not the class.
+        - pattern: '::prepare(/\d+)?$'
+          arg_index: 0
       python3:
         # The cursor's class is often unknown: an unannotated parameter
         # has no type, so the owner is the stand-in for an unknown one.
@@ -7213,6 +7287,10 @@ families:
         # file_get_contents reads a URL as happily as it reads a path.
         - pattern: '^\\file_get_contents\b(/\d+)?'
           arg_index: 0
+        # fsockopen opens a socket to the host it is given, so the host is
+        # the first argument.
+        - pattern: '^\\fsockopen\b(/\d+)?'
+          arg_index: 0
         # SoapClient fetches the WSDL it is given, over the network, in its
         # CONSTRUCTOR -- the same shape as curl_init above, one argument
         # earlier. The URL is the first argument. The other way to give
@@ -7449,11 +7527,25 @@ families:
   taint.sources.database:
     cwe: null
     severity: MEDIUM
-    languages: ['typescript', 'javascript', 'arkts']
+    languages: ['typescript', 'javascript', 'arkts', 'php']
     patterns:
       # A row read back from the database carries whatever an earlier request
       # stored in it, so it is untrusted input like any other.
       - '^query\b(/\d+)?'
+    by_language:
+      php:
+        # A row read back from the database carries whatever an earlier request
+        # stored in it, so it is untrusted input as much as the request is.
+        # The connection's own fetch methods are the read; the facade's
+        # one-row read is the same read under another name.
+        - '^Doctrine\\DBAL\\Connection::(fetchOne|fetchAll|fetchColumn|fetchAssociative|fetchAllAssociative|fetchNumeric|fetchAllNumeric|iterate|iterateAssociative|iterateColumn)\b(/\d+)?'
+        - '^Illuminate\\Support\\Facades\\DB::(selectOne|select)\b(/\d+)?'
+        # A cached value carries whatever an earlier request stored in it,
+        # the same way a row read back from the database does.
+        - '^Illuminate\\Support\\Facades\\Redis::(get|mget)\b(/\d+)?'
+        # The extension's own client class, reached through a variable whose
+        # type the front end names. Same read, another spelling of the owner.
+        - '^\\Redis::(get|mget)\b(/\d+)?'
 
   taint.sources.web:
     cwe: null
@@ -7587,6 +7679,16 @@ families:
         # given as INPUT_GET / INPUT_POST / INPUT_COOKIE.
         - '^\\filter_input\b(/\d+)?'
         - '^\\filter_input_array\b(/\d+)?'
+        # The framework's request object. The untrusted value comes out of a
+        # GETTER -- a header, a query parameter, the JSON body -- and the
+        # callee key names the class the request was imported from, so the
+        # pattern can say so too.
+        #
+        # The getters are the SOURCE, not their arguments: the name of the
+        # header is a constant, and what comes back is whatever the client
+        # sent. A pattern that named the argument instead would never fire.
+        - '^Illuminate\\Http\\Request::(get|post|put|patch|delete|options|head|input|query|header|cookie|server|file|files|json|route|ip|userAgent|referer|getContent|all)\b(/\d+)?'
+        - '^Symfony\\Component\\HttpFoundation\\Request::(getContent|get|query|request|cookies|headers|files|server)\b(/\d+)?'
 
       python3:
         # Flask's request object. The value a program uses comes out of a
@@ -7990,6 +8092,18 @@ families:
         # TypeScript resolves an imported class to its module, so the same call
         # arrives under a qualified key; the pattern names both shapes.
         - pattern: '^xpath\.(evaluate|parse|select)\b(/\d+)?'
+          arg_index: 0
+      php:
+        # The XPath evaluators. The EXPRESSION is the first argument of
+        # each of them.
+        - pattern: '^\\DOMXPath::(query|evaluate)\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^\\SimpleXMLElement::xpath\b(/\d+)?'
+          arg_index: 0
+        # The element's own xpath() method, reached through a value whose
+        # type the front end could not resolve: the owner is then the class
+        # the code is in, so the pattern names the METHOD and not the class.
+        - pattern: '::xpath(/\d+)?$'
           arg_index: 0
 
   xquery.sinks:
@@ -8750,6 +8864,26 @@ families:
       # safe reaches the page as markup.
       - pattern: '^django\.utils\.html\.mark_safe\b(/\d+)?'
         arg_index: 0
+      php:
+        # `echo` and `print` are how PHP writes to the response, so what
+        # they print reaches the page. The construct has no counterpart in
+        # the callee key space, so the TAC names it the way it names the
+        # other constructs: the synthetic owner and the construct's name.
+        - pattern: '^<php>\.echo\b(/\d+)?'
+          arg_index: 0
+        # The response helper and the response object both take the body as
+        # their first argument.
+        - pattern: '^\\response\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^Symfony\\Component\\HttpFoundation\\Response\.\<init\>(/\d+)?'
+          arg_index: 0
+        # The template engines render the values they are given into the
+        # page. The values are the SECOND argument -- the first is the
+        # template.
+        - pattern: '^Illuminate\\Support\\Facades\\Blade::render\b(/\d+)?'
+          arg_index: 1
+        - pattern: '^Twig\\Environment::render\b(/\d+)?'
+          arg_index: 1
 
   xxe.sinks:
     cwe: CWE-611
@@ -8833,6 +8967,21 @@ families:
         - pattern: '^libxmljs\.parseXml(Async)?\b(/\d+)?'
           arg_index: 0
         - pattern: '^(?:libxmljs2\.)?parseXmlString\b(/\d+)?'
+          arg_index: 0
+      php:
+        # The XML parsers that read a document. The document is the FIRST
+        # argument of the function-form ones and of the reader's method.
+        - pattern: '^\\simplexml_load_string\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^\\simplexml_load_file\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^\\DOMDocument::loadXML\b(/\d+)?'
+          arg_index: 0
+        # load() reads a document from a file, and a file is as good a place
+        # for an entity as a string.
+        - pattern: '^\\DOMDocument::load\b(/\d+)?'
+          arg_index: 0
+        - pattern: '^\\XMLReader::XML\b(/\d+)?'
           arg_index: 0
   android-implicit-intent.sinks:
     cwe: CWE-927

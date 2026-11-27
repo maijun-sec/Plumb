@@ -998,6 +998,18 @@
                              categories at zero coverage and a recall of 17.7%,
                              measured against BenchProctor's script suites. -->
                         <include>org/plumb/dfa/taint/JavaScriptSinkFamilyTest.java</include>
+                        <!-- PHP reaches its own sinks. The catalogue named the
+                             framework's request getters as sources, but the
+                             engine only consulted a source family for a CALL,
+                             and every PHP library call is a black box: the
+                             call arrived as UNINTERPRETED and the source was
+                             never seeded. A language whose third-party calls
+                             are all black boxes had no sources at all, and
+                             the echo statement produced no sink at all. The
+                             test pins the catalogue keys and the end-to-end
+                             flow, and it pins that a catalogue source does
+                             not leak into another language. -->
+                        <include>org/plumb/dfa/taint/PhpSinkFamilyTest.java</include>
                         <!-- The script languages' own sinks, through the real
                              front ends: the owner of document.write is a
                              CLASS, the owner of socket.recv's value is the

@@ -1257,12 +1257,18 @@ export class Translator {
         this.lowerExpression(node.expression);
         return;
       case "echo":
+        // `echo` is how PHP writes to the response, so it is a SINK: what it
+        // prints reaches whoever reads the output. The statement used to
+        // lower the expression and throw the result away, so the value was
+        // computed and then LOST -- and a tainted value printed here reached
+        // no sink at all, which is the most common way a PHP page carries
+        // untrusted data into the HTML.
         for (const expression of node.expressions ?? []) {
-          this.lowerExpression(expression);
+          this.lowerOutput(expression, node);
         }
         return;
       case "print":
-        this.lowerExpression(node.expression);
+        this.lowerOutput(node.expression, node);
         return;
       case "return": {
         const value = node.expr ? this.lowerExpression(node.expr) : undefined;
@@ -2611,7 +2617,13 @@ export class Translator {
         return this.lowerPresence(node).operand;
       }
       case "print": {
-        return this.lowerExpression(node.expression);
+        // `print` in an expression position still prints: it is a write to
+        // the output, and the value it writes is the sink's argument. The
+        // expression itself yields 1, not the printed value, so the result
+        // is the constant PHP returns.
+        const value = this.lowerExpression(node.expression);
+        this.emitOutputSink(value, node);
+        return constOp(CONST.INT, "1");
       }
       case "clone": {
         const value = this.lowerExpression(node.what);
@@ -2883,7 +2895,14 @@ export class Translator {
         } else if (Array.isArray(node.body.children)) {
           this.lowerBody(node.body.children);
         } else {
-          this.lowerExpression(node.body);
+          // An ARROW FUNCTION's body is an EXPRESSION, and PHP returns that
+          // expression's value. The expression used to be computed and thrown
+          // away, so the function had no return value at all: the TAC carried
+          // no RETURN, the summary had nothing to say about what comes back
+          // out of it, and a tainted value that went through the arrow
+          // function stopped there -- with every sink downstream of it blind.
+          const value = this.lowerExpression(node.body);
+          this.lowerReturn(value, node);
         }
       }
     } finally {
@@ -4225,6 +4244,45 @@ export class Translator {
   }
 
   /**
+   * A write to the output: `echo $x` and `print $x`.
+   *
+   * The value is lowered and then handed to the output sink, so the sink
+   * carries the value the program actually prints.
+   *
+   * @param {object} expression the expression whose value is printed
+   * @param {object} node the statement, for the position
+   */
+  lowerOutput(expression, node) {
+    const value = this.lowerExpression(expression);
+    this.emitOutputSink(value, node);
+  }
+
+  /**
+   * The sink an output write is.
+   *
+   * `echo` and `print` are language constructs, not functions, so they have
+   * no counterpart in the callee key space. The TAC names them the way the
+   * other constructs are named -- the synthetic owner, the construct's own
+   * name, and the printed value as the first argument -- so that a sink
+   * catalogue has a key to name.
+   *
+   * The call is a plain CALL rather than a black box because the effect of
+   * writing to the output is not in doubt: the value is written.
+   */
+  emitOutputSink(value, node) {
+    const dest = this.state.newTemp();
+    this.emit({
+      kind: KIND.CALL,
+      dest,
+      calleeSig: `${SYNTHETIC_OWNER}.echo/1`,
+      args: [constOp(CONST.STRING, SYNTHETIC_OWNER), value],
+      argCount: 1,
+      ...this.position(node),
+    });
+    return dest;
+  }
+
+  /**
    * A call.
    *
    * The receiver slot is reserved whether or not the call has a receiver
@@ -4588,10 +4646,38 @@ export class Translator {
     }
   }
 
-  /** The type of a receiver, when the function inferred one. */
+  /**
+   * The type of a receiver, when the function inferred one.
+   *
+   * <p>A receiver is usually a variable, and the table answers for it. It is
+   * sometimes a CONSTRUCTION -- `(new Parser())->parse($data)` names the class
+   * on the construction itself -- and the table cannot answer for that, because
+   * the table is keyed by variable name.
+   */
   typeOfReceiver(node) {
-    if (!node || node.kind !== "variable") return null;
-    return this.state.types.get(node.name) ?? null;
+    if (!node) return null;
+    if (node.kind === "variable") return this.state.types.get(node.name) ?? null;
+    if (node.kind === "new") return this.typeOfConstruction(node);
+    return null;
+  }
+
+  /**
+   * The class a construction builds, when the source names one.
+   *
+   * <p>An ANONYMOUS class has no name to report, so it gets none: the owner
+   * then stays the class the code is written in, which is what a reader would
+   * say too.
+   */
+  typeOfConstruction(node) {
+    if (!node || node.kind !== "new") return null;
+    const what = node.what;
+    if (!what) return null;
+    if (what.kind === "class") return null;
+    if (what.kind === "selfreference" || what.kind === "staticreference") {
+      return this.enclosingClassName();
+    }
+    if (what.kind === "variable" || what.kind === "parentreference") return null;
+    return this.qualifiedClassNameOf(what);
   }
 
   // ---- helpers --------------------------------------------------------------------------

@@ -1920,6 +1920,24 @@ public abstract class TaintedCheckerBase implements DfaChecker {
       // taint-preserving treatment applies to the arguments rather than to a value.
       case UNINTERPRETED -> {
         if (ins.dest instanceof TacOperand.TacVar unDv) {
+          // A catalogue SOURCE family may name a call the engine cannot see
+          // inside. The framework's request getters are the canonical case: a
+          // black-box call whose RESULT is the untrusted input and whose
+          // arguments say nothing about it (the name it is asked for is a
+          // constant). The CALL path seeds those; without this one, a
+          // language whose third-party calls are all black boxes -- PHP, where
+          // every library call is UNINTERPRETED -- has NO sources at all, and
+          // every sink downstream of the request is blind.
+          //
+          // Only the CATALOGUE is consulted, not the substring list. The
+          // substring list names calls whose taint comes from their ARGUMENTS
+          // (parseInt of a tainted string), and the argument path below
+          // already carries that. The catalogue names calls whose RESULT is
+          // the input, and the arguments cannot say that.
+          if (isCatalogueSourceCall(ins.calleeSig, fn, ctx) && !taintedVars.containsKey(unDv)) {
+            markSource(
+                unDv, "input:" + ins.calleeSig, ins, fn.signature(), "input " + ins.calleeSig);
+          }
           org.plumb.dfa.semantics.LanguageSemantics semantics = semanticsFor(ctx);
           if (semantics.preservesTaint(ins.calleeSig)) {
             for (int argIdx : passthroughArgIndices(ins)) {
@@ -2413,6 +2431,31 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     if (ctx == null) return false;
     return InputSourcePatterns.defaults()
         .matches(callee, ctx.config().sinkFamilies(), languageFor(ctx));
+  }
+
+  /**
+   * Whether the CATALOGUE says this callee is a source -- and only the catalogue.
+   *
+   * <p><b>Why this is separate from {@link #isInputSourceCall}.</b> The union of the catalogue and
+   * the substring list is the right answer for a CALL: the substring list names calls whose taint
+   * comes from their ARGUMENTS (a number parsed out of a tainted string), and the CALL path already
+   * carries that through the argument. But the substring list is deliberately broad -- it matches a
+   * method NAME anywhere -- so applying it to a call the engine cannot see inside would taint every
+   * {@code parseInt} and every {@code getString} result in the program, whether or not anything
+   * untrusted reached it.
+   *
+   * <p>The catalogue is anchored and language-scoped: it names the specific API that carries
+   * untrusted data IN, and the result of such a call is untrusted by definition. That is the claim
+   * this method asks, and it is the claim a black-box call needs.
+   *
+   * @param callee the callee signature
+   * @param fn the function being analysed
+   * @param ctx the analysis context
+   * @return true when a catalogue source family matches the callee in this language
+   */
+  private static boolean isCatalogueSourceCall(String callee, TacFunction fn, AnalysisContext ctx) {
+    if (callee == null || ctx == null || fn == null) return false;
+    return ctx.config().sinkFamilies().sourceFamilyMatcher().matches(callee, fn.sourceLanguage());
   }
 
   /**
@@ -5319,7 +5362,99 @@ public abstract class TaintedCheckerBase implements DfaChecker {
     };
   }
 
+  /**
+   * Whether a container that holds a tainted value is itself tainted, in this language.
+   *
+   * <p><b>Why the answer is per-language.</b> The container is the thing a sink receives when the
+   * program hands over a whole collection rather than one of its elements: a template engine handed
+   * the values to render, a logger handed a context. In PHP that shape is the framework's own: a
+   * Blade template is rendered with an array of values, and the array is the ONLY argument the
+   * template engine reads, so the taint has to be on the array or the template renders a clean
+   * page.
+   *
+   * <p>Elsewhere the same marking is a net loss, and it was measured rather than assumed. Against
+   * BenchProctor's Python suites the marking added four true positives and five false positives on
+   * one suite: a list handed to {@code subprocess.run} is a list of ARGUMENTS, not a context, and a
+   * tainted argument in it does not make the command itself attacker-chosen. The engine tracks the
+   * taint per element everywhere, so the per-element reading is still there; what the marking adds
+   * is the whole-container reading, and it is only the whole-container reading that a template
+   * engine needs.
+   *
+   * <p><b>Why it must not be used to prove a location is clean.</b> A language this answer says
+   * "no" for still tracks the taint on the element, and a read of that element still sees it.
+   *
+   * @param fn the function being analysed
+   * @return true when a tainted value stored into a container taints the container
+   */
+  private static boolean containerCarriesItsTaint(TacFunction fn) {
+    return fn != null && fn.sourceLanguage() == SourceLanguage.PHP;
+  }
+
+  /**
+   * Mark the container of a store as tainted, when the value stored into it is tainted.
+   *
+   * <p><b>Why the container carries the taint too.</b> A container that holds something the
+   * attacker controls is not a clean container: whatever the program does with the container as a
+   * whole -- hand it to a template engine, serialise it, log it -- can carry that value out. The
+   * engine already tracks the taint PER ELEMENT, so a read of the element sees it; what it did not
+   * do is put the taint on the container, and a sink that takes the container never reads an
+   * element.
+   *
+   * <p><b>Why it is the conservative direction.</b> A false NEGATIVE here is a vulnerability the
+   * scanner cannot see, because the taint stops at the write and the sink sees a clean container. A
+   * false POSITIVE is a report on a container that happened to hold one tainted element among clean
+   * ones -- which is still a container an attacker influenced.
+   *
+   * @param ins the store instruction
+   */
+  private void markContainerTaintedByStore(TacInstruction ins) {
+    if (!(ins.lhs1 instanceof TacOperand.TacVar container)) return;
+    if (!(ins.dest instanceof TacOperand.TacVar value)) return;
+    if (!taintedVars.containsKey(value)) return;
+    if (taintedVars.containsKey(container)) return;
+    String label = labelOf(value);
+    taintedVars.put(container, factFor(container, label));
+    List<FlowStep> path = new ArrayList<>();
+    List<FlowStep> srcPath = taintPaths.get(value);
+    if (srcPath != null) path.addAll(srcPath);
+    path.add(
+        new FlowStep(
+            "propagate",
+            "",
+            ins.line,
+            ins.column,
+            "",
+            "tainted value stored into the container " + container.name()));
+    taintPaths.put(container, java.util.Collections.unmodifiableList(path));
+    int parentHandle = v2TraceHandle.getOrDefault(value, -1);
+    if (parentHandle >= 0) {
+      int handle =
+          v2Builder.addPropagate(
+              TraceNode.Op.MOVE,
+              List.of(new OperandRef.Var(value.name(), 0), new OperandRef.Var(container.name(), 0)),
+              parentHandle,
+              "store into " + container.name(),
+              "",
+              ins.line,
+              ins.column,
+              "");
+      v2TraceHandle.put(container, handle);
+    }
+  }
+
   private void recordArrayStore(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
+    // A container that HOLDS a tainted value is itself tainted.
+    //
+    // The element taint is recorded below (per-element, or per-entry in a
+    // language with keyed containers), so a later read of THAT element sees
+    // it. But a sink that receives the WHOLE container never reads an
+    // element: a template engine handed an array of values to render, a
+    // query handed a row, a logger handed a context. For those the taint
+    // has to be on the container itself, or the taint stops at the write
+    // and the sink is handed a clean container.
+    if (containerCarriesItsTaint(fn)) {
+      markContainerTaintedByStore(ins);
+    }
     if (usesKeyedContainers(ctx)) {
       recordKeyedStore(ins, fn, ctx);
       return;
