@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import org.plumb.dfa.checkers.StringConcatTracker;
 import org.plumb.dfa.engine.AnalysisContext;
 import org.plumb.dfa.solver.SolverZ3Bridge;
 import org.plumb.dfa.summary.CalleeSummaryKeys;
@@ -122,6 +123,15 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   private final GuardTracker guardTracker = new GuardTracker();
 
   /**
+   * Which values this function has shown to hold strings.
+   *
+   * <p>The arithmetic rules must not report a concatenation: adding two strings does not overflow.
+   * A script front end types nothing, so the only evidence of a string is a literal next to the
+   * operation -- and a concatenation whose string-ness is one step away had no evidence at all.
+   */
+  private final StringConcatTracker strings = new StringConcatTracker();
+
+  /**
    * Set of "already-reported" (file, line, op) triples. The same subexpression might fire in
    * multiple positions (e.g. pre-pass + forward pass); this suppresses duplicates.
    */
@@ -155,6 +165,18 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
    */
   protected abstract String sinkPredicate(TacInstruction ins, AnalysisContext ctx);
 
+  /**
+   * Whether the instruction being processed concatenates strings.
+   *
+   * <p>A subclass that watches an arithmetic hazard asks this before it reports: adding two strings
+   * does not overflow, it builds a longer string. The answer carries the knowledge of the whole
+   * function, not just of the one operation -- a concatenation produces a string, so the NEXT
+   * concatenation can be recognised even when no literal sits next to it.
+   */
+  protected boolean isStringConcat(TacInstruction ins) {
+    return strings.lastWasConcat();
+  }
+
   // ─────────── Lifecycle ───────────
 
   @Override
@@ -165,6 +187,7 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
     guards.clear();
     guardTracker.clear();
     reported.clear();
+    strings.clear();
     // The caller-seeded ranges are PER FUNCTION. They are cleared at every
     // CALL as well, but a function whose body has no call never clears them,
     // and the map's keys are variable names -- a TacVar is identified by its
@@ -377,6 +400,10 @@ public abstract class BoundaryConstraintChecker extends TaintedCheckerBase {
   public void checkInstruction(TacInstruction ins, TacFunction fn, AnalysisContext ctx) {
     super.checkInstruction(ins, fn, ctx);
     guardTracker.track(ins);
+    // Note what the instruction holds, before the sink test below reads it: a
+    // concatenation is not arithmetic, and the value it produces is a string
+    // that the NEXT concatenation needs to know.
+    strings.observe(ins);
     switch (ins.kind) {
       case MOVE -> propagateMove(ins);
       case BINOP -> propagateBinop(ins, ctx);

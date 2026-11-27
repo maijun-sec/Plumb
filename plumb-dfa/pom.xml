@@ -525,6 +525,17 @@
                              overflowing, `data < (Integer.MAX_VALUE / 2)` does. -->
                         <include>org/plumb/dfa/checkers/taint/IntOverflowCwe190GuardTest.java</include>
 
+                        <!-- A concatenation is not an arithmetic hazard. The
+                             arithmetic rules could only see a string LITERAL next
+                             to the operation, so a concatenation whose
+                             string-ness was one step away was reported as an
+                             integer overflow -- on a string. The control matters
+                             as much: adding a tainted value to a NUMBER is
+                             still reported, so the test pins the difference
+                             between the two operations and not the absence of a
+                             report. -->
+                        <include>org/plumb/dfa/checkers/taint/StringConcatIsNotArithmeticTest.java</include>
+
                         <!-- The side-effect invalidation log is read by a
                              STRING key ("this:foo"), and the spelling
                              lives only in the class javadoc. A mismatch

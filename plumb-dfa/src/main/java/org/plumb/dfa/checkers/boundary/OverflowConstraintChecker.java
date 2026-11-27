@@ -74,7 +74,7 @@ public final class OverflowConstraintChecker extends BoundaryConstraintChecker {
     // Skip string concatenation — `"foo" + x`
     // is a Java StringBuilder op, not an
     // integer arithmetic hazard.
-    if (ins.kind == TacInstruction.Kind.BINOP && isStringConcat(ins.lhs1, ins.lhs2, dest)) {
+    if (ins.kind == TacInstruction.Kind.BINOP && isStringConcat(ins)) {
       return false;
     }
     switch (ins.kind) {
@@ -90,14 +90,6 @@ public final class OverflowConstraintChecker extends BoundaryConstraintChecker {
         return false;
       }
     }
-  }
-
-  private static boolean isStringConcat(TacOperand lhs1, TacOperand lhs2, TacOperand.TacVar dest) {
-    if (dest.type() == TacType.STRING) return true;
-    if (lhs1 instanceof TacOperand.Const c && c.type() == TacType.STRING) return true;
-    if (lhs2 instanceof TacOperand.Const c && c.type() == TacType.STRING) return true;
-    if (lhs1 instanceof TacOperand.TacVar v && v.type() == TacType.STRING) return true;
-    return lhs2 instanceof TacOperand.TacVar v && v.type() == TacType.STRING;
   }
 
   @Override

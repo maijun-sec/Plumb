@@ -49,6 +49,7 @@ package org.plumb.dfa.checkers.taint;
 
 import java.util.HashSet;
 import java.util.Set;
+import org.plumb.dfa.checkers.StringConcatTracker;
 import org.plumb.dfa.engine.AnalysisContext;
 import org.plumb.dfa.summary.FunctionSummary;
 import org.plumb.dfa.summary.Operation;
@@ -90,6 +91,16 @@ import org.plumb.tac.ir.UnaryOperator;
 @Deprecated
 public final class IntUnderflowChecker extends TaintedCheckerBase {
   private final GuardTracker guards = new GuardTracker();
+
+  /**
+   * Which values this function has shown to hold strings.
+   *
+   * <p>The arithmetic rules must not report a concatenation: adding two strings does not overflow.
+   * A script front end types nothing, so the only evidence of a string is a literal next to the
+   * operation -- and a concatenation whose string-ness is one step away had no evidence at all.
+   */
+  private final StringConcatTracker strings = new StringConcatTracker();
+
   private AnalysisContext currentCtx;
 
   public IntUnderflowChecker() {
@@ -106,6 +117,7 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
   public void initFunction(AnalysisContext ctx, TacFunction fn) {
     super.initFunction(ctx, fn);
     this.guards.clear();
+    this.strings.clear();
     this.currentCtx = ctx;
   }
 
@@ -120,6 +132,10 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
     // format would have left this checker writing the old one, so the same
     // source would carry two labels depending on which rule reported it.
     this.guards.track(ins);
+    // Note what the instruction holds, before the branches below read it: a
+    // concatenation is not arithmetic, and the value it produces is a string
+    // that the NEXT concatenation needs to know.
+    this.strings.observe(ins);
     if (ins.dest == null || !(ins.dest instanceof TacOperand.TacVar)) {
       return;
     }
@@ -205,7 +221,7 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
       this.taintedVars.put(destVar, factFor(destVar, "underflow:" + String.valueOf(op)));
     }
     if (lhs1Hazard || lhs2Hazard) {
-      if (IntUnderflowChecker.isStringConcat(ins.lhs1, ins.lhs2, destVar)) {
+      if (this.strings.lastWasConcat()) {
         return;
       }
       if (this.isGuardBoundedUnderflow(ins)) {
@@ -442,29 +458,5 @@ public final class IntUnderflowChecker extends TaintedCheckerBase {
           .guardStore()
           .add(g.boundedVar().name(), DivByZeroChecker.rewriteForArithDsl(desc));
     }
-  }
-
-  private static boolean isStringConcat(TacOperand lhs1, TacOperand lhs2, TacOperand.TacVar dest) {
-    TacOperand.TacVar rv;
-    TacOperand.TacVar lv;
-    TacOperand.Const lc2;
-    TacOperand.Const lc1;
-    if (dest.type() == TacType.STRING) {
-      return true;
-    }
-    if (lhs1 instanceof TacOperand.Const
-        && (lc1 = (TacOperand.Const) lhs1).type() == TacType.STRING) {
-      return true;
-    }
-    if (lhs2 instanceof TacOperand.Const
-        && (lc2 = (TacOperand.Const) lhs2).type() == TacType.STRING) {
-      return true;
-    }
-    if (lhs1 instanceof TacOperand.TacVar
-        && (lv = (TacOperand.TacVar) lhs1).type() == TacType.STRING) {
-      return true;
-    }
-    return lhs2 instanceof TacOperand.TacVar
-        && (rv = (TacOperand.TacVar) lhs2).type() == TacType.STRING;
   }
 }
