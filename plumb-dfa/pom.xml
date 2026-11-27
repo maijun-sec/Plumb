@@ -175,7 +175,7 @@
                         <include>org/plumb/dfa/config/ConfigLoaderTest.java</include>
                         <!-- The project's own sanitizers: a project declares its own trust
                              boundaries, and a declared sanitizer has to win over the callee's
-                             summary -- otherwise the summary puts the taint straight back. -->
+                             summary; otherwise the summary puts the taint straight back. -->
                         <include>org/plumb/dfa/config/SanitizerConfigTest.java</include>
                         <!-- The language filter is a LOAD-TIME filter: the families,
                              patterns and checkers of the languages that were not
@@ -206,7 +206,7 @@
                              stops being provably clean. -->
                         <include>org/plumb/dfa/taint/ContainerContentFollowsTheCallSiteTest.java</include>
                         <!-- An assignment that overwrites a tainted value with a clean
-                             one kills the taint -- for the block it sits in. An
+                             one kills the taint for the block it sits in. An
                              overwrite in one arm of a branch does not silence the
                              other arm. -->
                         <include>org/plumb/dfa/taint/AssignmentKillsTaintTest.java</include>
@@ -520,7 +520,7 @@
                         <!-- CWE-190: the multiplication branch of the overflow heuristic. The
                              checker had ADD and SUB branches and NO MUL branch, so a guard on
                              the multiplier's operand never silenced a product; and the bound
-                             has to be judged by its VALUE, not by its presence --
+                             has to be judged by its VALUE, not by its presence: 
                              `data < Integer.MAX_VALUE` does not stop `data * 2` from
                              overflowing, `data < (Integer.MAX_VALUE / 2)` does. -->
                         <include>org/plumb/dfa/checkers/taint/IntOverflowCwe190GuardTest.java</include>
@@ -538,21 +538,21 @@
                              place" label? The base class marks an
                              input-source call's destination, and five
                              checkers used to write that label AGAIN with
-                             their own copy of the format -- four through
+                             their own copy of the format: four through
                              taintedVars.put, one through markSource, so
                              the copies were invisible to a search for the
                              put alone. The two agreed only by
                              coincidence, and a change to the base's
                              format would have split one source into two
                              labels depending on which rule reported it.
-                             A per-checker test cannot catch that -- only
+                             A per-checker test cannot catch that; only
                              comparing the checkers against each other
                              can. -->
                         <include>org/plumb/dfa/checkers/taint/SourceMarkingLabelConsistencyTest.java</include>
 
                         <!-- The DOMAIN gate. Every taint rule declares the kind of
                              value it consumes, and the engine had a domain
-                             lattice for it -- but the comparison at the sink was
+                             lattice for it, but the comparison at the sink was
                              the rule's domain against ITSELF, so it could not
                              fail: a tainted NUMBER was reported as SQL
                              injection and a tainted STRING as an uncontrolled
@@ -840,8 +840,8 @@
                         <include>org/plumb/dfa/solver/SolverPredicateFeedingTest.java</include>
                         <!-- The solver's answer to the question a path condition
                              actually asks. The condition handed over was the
-                             contradictory PAIR of the source's guards -- which the
-                             engine had already decided arithmetically -- and the
+                             contradictory PAIR of the source's guards (which the
+                             engine had already decided arithmetically), and the
                              question was the evaluation question, which the pure-Java
                              bridge cannot decide for a free variable. So the solver
                              contributed nothing to a taint rule, and the engine's
